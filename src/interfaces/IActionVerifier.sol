@@ -1,10 +1,32 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
+/// @title IActionVerifier
+/// @notice Interface for verifying actions such as market creation and IP offer creation.
 interface IActionVerifier {
-    function processMarketCreation(bytes32 marketHash, bytes calldata _actionParams) external returns (bool valid);
+    /**
+     * @notice Processes market creation by validating the provided parameters.
+     * @param _marketHash A unique hash identifier for the market.
+     * @param _marketParams Encoded parameters required for market creation.
+     * @return valid Returns true if the market creation is valid.
+     */
+    function processMarketCreation(bytes32 _marketHash, bytes calldata _marketParams) external returns (bool valid);
 
-    // function processIPOfferCreation(bytes calldata _offerParams)
-    //     external
-    //     returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts);
+    /**
+     * @notice Processes IP offer creation by validating the provided parameters.
+     * @dev The incentive provider (IP) is specified as a parameter.
+     * @param _offerHash A unique hash identifier for the offer.
+     * @param _ip The address of the incentive provider.
+     * @param _offerParams Encoded parameters required for IP offer creation.
+     * @return valid Returns true if the IP offer creation is valid.
+     * @return incentives An array of addresses representing the incentive providers.
+     * @return incentiveAmounts An array of incentive amounts corresponding to each incentive provider.
+     */
+    function processIPOfferCreation(
+        bytes32 _offerHash,
+        address _ip,
+        bytes calldata _offerParams
+    )
+        external
+        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts);
 }

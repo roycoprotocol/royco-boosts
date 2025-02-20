@@ -16,8 +16,14 @@ interface IUniswapV3Factory {
 }
 
 contract UniswapLpActionVerifier is ActionVerifierBase {
-    struct ActionParams {
+    struct MarketParams {
         address uniV3Pool;
+        uint32 startBlock;
+        uint32 endBlock;
+    }
+
+    struct OfferParams {
+        uint256 multiplier;
     }
 
     /// @notice Official Uniswap V3 factory
@@ -29,11 +35,10 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
 
     /**
      * @dev Internal function that verifies if the provided pool address is the official Uniswap V3 pool.
-     * It decodes the parameters, fetches the pool's metadata, and uses the factory to retrieve
-     * the expected pool address.
+     * It decodes the parameters, fetches the pool's metadata, and uses the factory to retrieve the expected pool address.
      */
-    function _processMarketCreation(bytes32, /*marketHash*/ bytes calldata _actionParams) internal view override returns (bool valid) {
-        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
+    function _processMarketCreation(bytes32, /*marketHash*/ bytes calldata _marketParams) internal view override returns (bool valid) {
+        MarketParams memory params = abi.decode(_marketParams, (MarketParams));
         IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
 
         // Get pool metadata to validate that it was created using the official factory.
