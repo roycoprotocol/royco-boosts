@@ -51,4 +51,14 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
 
         valid = (actualPool == address(pool));
     }
+
+    function _processIPOfferCreation(
+        bytes32 _offerHash,
+        address _ip,
+        bytes calldata _offerParams
+    )
+        internal
+        override
+        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts)
+    { }
 }
