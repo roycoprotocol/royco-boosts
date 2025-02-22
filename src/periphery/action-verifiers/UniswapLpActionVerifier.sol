@@ -39,9 +39,14 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
      */
     function _processMarketCreation(bytes32, /*marketHash*/ bytes calldata _marketParams) internal view override returns (bool valid) {
         MarketParams memory params = abi.decode(_marketParams, (MarketParams));
-        IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
+
+        // Verify the market duration
+        if (params.startBlock < block.number && params.endBlock < params.startBlock) {
+            return false;
+        }
 
         // Get pool metadata to validate that it was created using the official factory.
+        IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
         address token0 = pool.token0();
         address token1 = pool.token1();
         uint24 fee = pool.fee();
@@ -59,6 +64,6 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
     )
         internal
         override
-        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts)
+        returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid)
     { }
 }

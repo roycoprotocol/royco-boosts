@@ -46,8 +46,8 @@ abstract contract ActionVerifierBase is IActionVerifier {
      * @param _ip The address of the incentive provider.
      * @param _offerParams Encoded parameters required for IP offer creation.
      * @return valid Returns true if the IP offer creation is valid.
-     * @return incentives An array of addresses representing the incentive assets (tokens and/or points).
-     * @return incentiveAmounts An array of incentive amounts corresponding to each incentive asset.
+     * @return incentivesOffered An array of addresses representing the incentive assets (tokens and/or points).
+     * @return incentiveAmountsPaid An array of incentive amounts corresponding to each incentive asset.
      */
     function processIPOfferCreation(
         bytes32 _offerHash,
@@ -56,9 +56,9 @@ abstract contract ActionVerifierBase is IActionVerifier {
     )
         external
         onlyRoycoMarketHub
-        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts)
+        returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid)
     {
-        (valid, incentives, incentiveAmounts) = _processIPOfferCreation(_offerHash, _ip, _offerParams);
+        (valid, incentivesOffered, incentiveAmountsPaid) = _processIPOfferCreation(_offerHash, _ip, _offerParams);
     }
 
     /**
@@ -75,8 +75,8 @@ abstract contract ActionVerifierBase is IActionVerifier {
      * @param _ip The address of the incentive provider.
      * @param _offerParams Encoded parameters required for IP offer creation.
      * @return valid Returns true if the IP offer creation is valid.
-     * @return incentives An array of addresses representing the incentive assets (tokens and/or points).
-     * @return incentiveAmounts An array of incentive amounts corresponding to each incentive asset.
+     * @return incentivesOffered An array of addresses representing the incentive assets (tokens and/or points).
+     * @return incentiveAmountsPaid An array of incentive amounts corresponding to each incentive asset.
      */
     function _processIPOfferCreation(
         bytes32 _offerHash,
@@ -85,5 +85,5 @@ abstract contract ActionVerifierBase is IActionVerifier {
     )
         internal
         virtual
-        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts);
+        returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid);
 }

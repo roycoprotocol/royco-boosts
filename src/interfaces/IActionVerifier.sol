@@ -19,8 +19,8 @@ interface IActionVerifier {
      * @param _ip The address of the incentive provider.
      * @param _offerParams Encoded parameters required for IP offer creation.
      * @return valid Returns true if the IP offer creation is valid.
-     * @return incentives An array of addresses representing the incentive assets (tokens and/or points).
-     * @return incentiveAmounts An array of incentive amounts corresponding to each incentive asset.
+     * @return incentivesOffered An array of addresses representing the incentive assets (tokens and/or points).
+     * @return incentiveAmountsPaid An array of incentive amounts corresponding to each incentive asset.
      */
     function processIPOfferCreation(
         bytes32 _offerHash,
@@ -28,5 +28,5 @@ interface IActionVerifier {
         bytes calldata _offerParams
     )
         external
-        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmounts);
+        returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid);
 }

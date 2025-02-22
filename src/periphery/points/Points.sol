@@ -28,15 +28,10 @@ contract Points is Ownable2Step {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
     event Award(address indexed to, uint256 indexed amount, address indexed awardedBy);
-    event AllowedVaultAdded(address indexed vault);
     event AllowedIPAdded(address indexed ip);
-    event VaultRemoved(address indexed vault);
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
-    /// @dev Maps a vault to if the vault is allowed to call this contract
-
-    mapping(address => bool) public isAllowedVault;
 
     /// @dev The PointsFactory used to create this program
     PointsFactory public immutable pointsFactory;
@@ -47,48 +42,29 @@ contract Points is Ownable2Step {
     string public symbol;
     /// @dev We track all points logic using base 1
     uint256 public decimals;
-    /// @dev Track which RecipeMarketHub IPs are allowed to mint
+    /// @dev Track which RoycoMarketHub IPs are allowed to mint
     mapping(address => bool) public allowedIPs;
 
     /*//////////////////////////////////////////////////////////////
                               POINTS AUTH
     //////////////////////////////////////////////////////////////*/
-    error VaultIsDuplicate();
 
-    /// @param vault The address to add to the allowed vaults for the points program
-    function addAllowedVault(address vault) external onlyOwner {
-        if (isAllowedVault[vault]) {
-            revert VaultIsDuplicate();
-        }
-
-        isAllowedVault[vault] = true;
-
-        emit AllowedVaultAdded(vault);
-    }
-
-    /// @param ip The incentive provider address to allow to mint points on RecipeMarketHub
-    function addAllowedIP(address ip) external onlyOwner {
+    /// @param ip The incentive provider address to allow to mint points on RoycoMarketHub
+    function addAllowedIPs(address ip) external onlyOwner {
         allowedIPs[ip] = true;
 
         emit AllowedIPAdded(ip);
     }
 
     error OnlyAllowedVaults();
-    error OnlyRecipeMarketHub();
+    error OnlyRoycoMarketHub();
     error NotAllowedIP();
 
-    modifier onlyAllowedVaults() {
-        if (!isAllowedVault[msg.sender]) {
-            revert OnlyAllowedVaults();
-        }
-        _;
-    }
-
-    /// @dev only the RecipeMarketHub can call this function
+    /// @dev only the RoycoMarketHub can call this function
     /// @param ip The address to check if allowed
-    modifier onlyRecipeMarketHubAllowedIP(address ip) {
-        if (!pointsFactory.isRecipeMarketHub(msg.sender)) {
-            revert OnlyRecipeMarketHub();
+    modifier onlyRoycoMarketHubAllowedIP(address ip) {
+        if (!pointsFactory.isRoycoMarketHub(msg.sender)) {
+            revert OnlyRoycoMarketHub();
         }
         if (!allowedIPs[ip]) {
             revert NotAllowedIP();
@@ -102,14 +78,8 @@ contract Points is Ownable2Step {
 
     /// @param to The address to mint points to
     /// @param amount  The amount of points to award to the `to` address
-    function award(address to, uint256 amount) external onlyAllowedVaults {
-        emit Award(to, amount, msg.sender);
-    }
-
-    /// @param to The address to mint points to
-    /// @param amount  The amount of points to award to the `to` address
     /// @param ip The incentive provider attempting to mint the points
-    function award(address to, uint256 amount, address ip) external onlyRecipeMarketHubAllowedIP(ip) {
+    function award(address to, uint256 amount, address ip) external onlyRoycoMarketHubAllowedIP(ip) {
         emit Award(to, amount, ip);
     }
 }
