@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
+import { IActionVerifier, IncentiveType } from "../interfaces/IActionVerifier.sol";
 
 /// @title ActionVerifierBase
 /// @notice Base contract that enforces all action verifier functions to be callable only by the Royco Market Hub.
@@ -24,7 +24,7 @@ abstract contract ActionVerifierBase is IActionVerifier {
      * @notice Modifier that restricts access to only the Royco Market Hub.
      */
     modifier onlyRoycoMarketHub() {
-        require(msg.sender == ROYCO_MARKET_HUB, "OnlyRoycoMarketHub");
+        require(msg.sender == ROYCO_MARKET_HUB, OnlyRoycoMarketHub());
         _;
     }
 
@@ -33,10 +33,19 @@ abstract contract ActionVerifierBase is IActionVerifier {
      * @dev This external function is protected by the onlyRoycoMarketHub modifier and defers execution to the internal function.
      * @param _marketHash A unique hash identifier for the market.
      * @param _marketParams Encoded parameters required for market creation.
+     * @param _incentiveType Enum representing if incentives are distributed per offer or per market.
      * @return valid Returns true if the market creation is valid.
      */
-    function processMarketCreation(bytes32 _marketHash, bytes calldata _marketParams) external onlyRoycoMarketHub returns (bool valid) {
-        valid = _processMarketCreation(_marketHash, _marketParams);
+    function processMarketCreation(
+        bytes32 _marketHash,
+        bytes calldata _marketParams,
+        IncentiveType _incentiveType
+    )
+        external
+        onlyRoycoMarketHub
+        returns (bool valid)
+    {
+        valid = _processMarketCreation(_marketHash, _marketParams, _incentiveType);
     }
 
     /**
@@ -65,9 +74,10 @@ abstract contract ActionVerifierBase is IActionVerifier {
      * @dev Internal function that child contracts must override with the market creation logic.
      * @param _marketHash A unique hash identifier for the market.
      * @param _marketParams Encoded parameters required for market creation.
+     * @param _incentiveType Enum representing if incentives are distributed per offer or per market.
      * @return valid Returns true if the market creation is valid.
      */
-    function _processMarketCreation(bytes32 _marketHash, bytes calldata _marketParams) internal virtual returns (bool valid);
+    function _processMarketCreation(bytes32 _marketHash, bytes calldata _marketParams, IncentiveType _incentiveType) internal virtual returns (bool valid);
 
     /**
      * @dev Internal function that child contracts must override with the IP offer creation logic.

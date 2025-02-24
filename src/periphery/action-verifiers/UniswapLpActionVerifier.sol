@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import { ActionVerifierBase } from "../../base/ActionVerifierBase.sol";
+import { ActionVerifierBase, IncentiveType } from "../../base/ActionVerifierBase.sol";
 
 /// @notice Minimal interface for a Uniswap V3 pool.
 interface IUniswapV3Pool {
@@ -37,11 +37,21 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
      * @dev Internal function that verifies if the provided pool address is the official Uniswap V3 pool.
      * It decodes the parameters, fetches the pool's metadata, and uses the factory to retrieve the expected pool address.
      */
-    function _processMarketCreation(bytes32, /*marketHash*/ bytes calldata _marketParams) internal view override returns (bool valid) {
+    function _processMarketCreation(
+        bytes32, /*marketHash*/
+        bytes calldata _marketParams,
+        IncentiveType _incentiveType
+    )
+        internal
+        view
+        override
+        returns (bool valid)
+    {
+        // Extract the market params
         MarketParams memory params = abi.decode(_marketParams, (MarketParams));
 
-        // Verify the market duration
-        if (params.startBlock < block.number && params.endBlock < params.startBlock) {
+        // Perform basic checks on the market metadata
+        if (params.endBlock < params.startBlock || _incentiveType != IncentiveType.PER_MARKET) {
             return false;
         }
 
