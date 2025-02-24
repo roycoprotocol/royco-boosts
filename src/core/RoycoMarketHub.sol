@@ -179,9 +179,9 @@ contract RoycoMarketHub is Ownable2Step {
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             address incentive = _incentivesOffered[i];
 
-            market.incentiveAmountsOffered[incentive] = incentiveAmountsOffered[i];
-            market.incentiveToProtocolFeeAmount[incentive] = protocolFeesToBePaid[i];
-            market.incentiveToFrontendFeeAmount[incentive] = frontendFeesToBePaid[i];
+            market.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
+            market.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
+            market.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
         }
 
         // Emit incentives added event
