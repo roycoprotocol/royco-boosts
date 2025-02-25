@@ -18,8 +18,6 @@ contract RoycoMarketHub is Ownable2Step {
     using FixedPointMathLib for uint256;
 
     struct IAM {
-        IncentiveType incentiveType;
-        address ip;
         uint64 frontendFee;
         address actionVerifier;
         bytes marketParams;
@@ -45,9 +43,7 @@ contract RoycoMarketHub is Ownable2Step {
         bytes offerParams;
     }
 
-    event MarketCreated(
-        bytes32 indexed marketHash, address indexed ip, address indexed actionVerifer, bytes marketParams, uint96 frontendFee, IncentiveType incentiveType
-    );
+    event MarketCreated(bytes32 indexed marketHash, address indexed ip, address indexed actionVerifer, bytes marketParams, uint96 frontendFee);
 
     event IncentivesAddedToMarket(
         bytes32 indexed marketHash,
@@ -93,60 +89,25 @@ contract RoycoMarketHub is Ownable2Step {
         POINTS_FACTORY = address(new PointsFactory(_owner));
     }
 
-    function createIAM(
-        address _actionVerifier,
-        bytes calldata _marketParams,
-        uint64 _frontendFee,
-        IncentiveType _incentiveType
-    )
-        external
-        returns (bytes32 marketHash)
-    {
+    function createIAM(address _actionVerifier, bytes calldata _marketParams, uint64 _frontendFee) external returns (bytes32 marketHash) {
         // Check that the frontend fee is valid
         require(_frontendFee > minFrontendFee && (protocolFee + _frontendFee) <= 1e18, InvalidFrontendFee());
 
         // Calculate the market hash
-        marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _marketParams, _frontendFee, _incentiveType));
+        marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _marketParams, _frontendFee));
 
         // Verify that the market params are valid for this action verifier
-        bool validMarketCreation = IActionVerifier(_actionVerifier).processMarketCreation(marketHash, _marketParams, _incentiveType);
+        bool validMarketCreation = IActionVerifier(_actionVerifier).processMarketCreation(marketHash, _marketParams);
         require(validMarketCreation, MarketCreationFailed());
 
         // Store the IAM in persistent storage
         IAM storage market = marketHashToIAM[marketHash];
-        market.incentiveType = _incentiveType;
-        market.ip = msg.sender;
         market.frontendFee = _frontendFee;
         market.actionVerifier = _actionVerifier;
         market.marketParams = _marketParams;
 
         // Emit market creation event
-        emit MarketCreated(marketHash, msg.sender, _actionVerifier, _marketParams, _frontendFee, _incentiveType);
-    }
-
-    function addIncentivesToMarket(bytes32 _marketHash, address[] calldata _incentivesOffered, uint256[] calldata _incentiveAmounts) external {
-        // Get the IAM by its market hash
-        IAM storage market = marketHashToIAM[_marketHash];
-
-        // Basic sanity checks
-        require(msg.sender == market.ip, OnlyMarketCreator());
-        require(market.incentiveType == IncentiveType.PER_MARKET, MarketHasIncentivesPerOffer());
-
-        // Pull incentives from the IP
-        (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
-            _pullIncentives(_incentivesOffered, _incentiveAmounts, market.frontendFee);
-
-        // Set incentives and fees in the market's mappings
-        for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
-            address incentive = _incentivesOffered[i];
-
-            market.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
-            market.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
-            market.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
-        }
-
-        // Emit incentives added event
-        emit IncentivesAddedToMarket(_marketHash, msg.sender, _incentivesOffered, incentiveAmountsOffered, protocolFeesToBePaid, frontendFeesToBePaid);
+        emit MarketCreated(marketHash, msg.sender, _actionVerifier, _marketParams, _frontendFee);
     }
 
     function createIPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 offerHash) {
@@ -157,7 +118,7 @@ contract RoycoMarketHub is Ownable2Step {
         IAM storage market = marketHashToIAM[_marketHash];
         // Verify that the offer params are valid for this action verifier
         (bool validIPOffer, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid) =
-            IActionVerifier(market.actionVerifier).processIPOfferCreation(offerHash, msg.sender, _offerParams);
+            IActionVerifier(market.actionVerifier).processIPOfferCreation(_marketHash, market.marketParams, offerHash, _offerParams, msg.sender);
         require(validIPOffer, IPOfferCreationFailed());
 
         // Store the IP Offer in persistent storage
@@ -167,31 +128,30 @@ contract RoycoMarketHub is Ownable2Step {
         ipOffer.offerParams = _offerParams;
         ipOffer.incentivesOffered = incentivesOffered;
 
-        // If incentives are a part of the market's offers pull them from the IP and store a record
-        if (market.incentiveType == IncentiveType.PER_OFFER) {
-            // Pull incentives from the IP
-            (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
-                _pullIncentives(incentivesOffered, incentiveAmountsPaid, market.frontendFee);
+        // Pull incentives from the IP
+        (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
+            _pullIncentives(incentivesOffered, incentiveAmountsPaid, market.frontendFee);
 
-            // Set incentives and fees in the offer's mappings
-            for (uint256 i = 0; i < incentivesOffered.length; ++i) {
-                address incentive = incentivesOffered[i];
+        // Set incentives and fees in the offer's mappings
+        for (uint256 i = 0; i < incentivesOffered.length; ++i) {
+            address incentive = incentivesOffered[i];
 
-                ipOffer.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
-                ipOffer.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
-                ipOffer.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
-            }
+            ipOffer.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
+            ipOffer.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
+            ipOffer.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
         }
     }
 
-    function fillIPOffer(bytes32 _ipOfferHash, bytes calldata fillParams, address _frontendFeeRecipient) external returns (bytes32 offerHash) {
+    function fillIPOffer(bytes32 _ipOfferHash, bytes calldata fillParams, address _frontendFeeRecipient) external {
         // Get the IP offer from its hash
-        IPOffer storage ipOffer = offerHashToIPOffer[offerHash];
+        IPOffer storage ipOffer = offerHashToIPOffer[_ipOfferHash];
 
         // Get the IAM by its market hash
         IAM storage market = marketHashToIAM[ipOffer.marketHash];
         // Verify that the offer params are valid for this action verifier
-        (bool validIPOfferFill, uint256 ratioToPayOnFill) = IActionVerifier(market.actionVerifier).processIPOfferFill(offerHash, msg.sender, fillParams);
+        (bool validIPOfferFill, uint256 ratioToPayOnFill) = IActionVerifier(market.actionVerifier).processIPOfferFill(
+            ipOffer.marketHash, market.marketParams, _ipOfferHash, ipOffer.offerParams, fillParams, msg.sender
+        );
         require(validIPOfferFill, IPOfferCreationFailed());
 
         // Number of incentives offered by the IP
@@ -356,4 +316,29 @@ contract RoycoMarketHub is Ownable2Step {
             feeClaimantToTokenToAmount[recipient][incentive] += amount;
         }
     }
+
+    // function addIncentivesToMarket(bytes32 _marketHash, address[] calldata _incentivesOffered, uint256[] calldata _incentiveAmounts) external {
+    //     // Get the IAM by its market hash
+    //     IAM storage market = marketHashToIAM[_marketHash];
+
+    //     // Basic sanity checks
+    //     require(msg.sender == market.ip, OnlyMarketCreator());
+    //     require(market.incentiveType == IncentiveType.PER_MARKET, MarketHasIncentivesPerOffer());
+
+    //     // Pull incentives from the IP
+    //     (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
+    //         _pullIncentives(_incentivesOffered, _incentiveAmounts, market.frontendFee);
+
+    //     // Set incentives and fees in the market's mappings
+    //     for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
+    //         address incentive = _incentivesOffered[i];
+
+    //         market.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
+    //         market.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
+    //         market.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
+    //     }
+
+    //     // Emit incentives added event
+    //     emit IncentivesAddedToMarket(_marketHash, msg.sender, _incentivesOffered, incentiveAmountsOffered, protocolFeesToBePaid, frontendFeesToBePaid);
+    // }
 }

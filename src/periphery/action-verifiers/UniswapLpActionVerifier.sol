@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import { ActionVerifierBase, IncentiveType } from "../../base/ActionVerifierBase.sol";
+import { ActionVerifierBase } from "../../base/ActionVerifierBase.sol";
 
-/// @notice Minimal interface for a Uniswap V3 pool.
 interface IUniswapV3Pool {
     function token0() external view returns (address);
     function token1() external view returns (address);
     function fee() external view returns (uint24);
 }
 
-/// @notice Minimal interface for the Uniswap V3 factory.
 interface IUniswapV3Factory {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
 }
@@ -18,62 +16,103 @@ interface IUniswapV3Factory {
 contract UniswapLpActionVerifier is ActionVerifierBase {
     struct MarketParams {
         address uniV3Pool;
-        uint32 startBlock;
-        uint32 endBlock;
     }
 
-    struct OfferParams {
+    struct IPOfferParams {
+        uint32 startBlock;
+        uint32 endBlock;
+        address[] incentivesOffered;
+        uint256[] incentiveAmountsPaid;
+    }
+
+    struct APOfferParams {
+        bytes32 ipOfferHash;
         uint256 multiplier;
     }
 
-    /// @notice Official Uniswap V3 factory
     address public immutable UNISWAP_V3_FACTORY;
 
     constructor(address _roycoMarketHub, address _uniV3Factory) ActionVerifierBase(_roycoMarketHub) {
         UNISWAP_V3_FACTORY = _uniV3Factory;
     }
 
-    /**
-     * @dev Internal function that verifies if the provided pool address is the official Uniswap V3 pool.
-     * It decodes the parameters, fetches the pool's metadata, and uses the factory to retrieve the expected pool address.
-     */
-    function _processMarketCreation(
-        bytes32, /*marketHash*/
-        bytes calldata _marketParams,
-        IncentiveType _incentiveType
-    )
-        internal
-        view
-        override
-        returns (bool valid)
-    {
-        // Extract the market params
+    function _processMarketCreation(bytes32, bytes memory _marketParams) internal view override returns (bool valid) {
         MarketParams memory params = abi.decode(_marketParams, (MarketParams));
-
-        // Perform basic checks on the market metadata
-        if (params.endBlock < params.startBlock || _incentiveType != IncentiveType.PER_MARKET) {
-            return false;
-        }
-
-        // Get pool metadata to validate that it was created using the official factory.
         IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
         address token0 = pool.token0();
         address token1 = pool.token1();
         uint24 fee = pool.fee();
-
-        // Retrieve the expected pool address from the factory.
         address actualPool = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(token0, token1, fee);
-
         valid = (actualPool == address(pool));
     }
 
     function _processIPOfferCreation(
+        bytes32 _marketHash,
+        bytes memory _marketParams,
         bytes32 _offerHash,
-        address _ip,
-        bytes calldata _offerParams
+        bytes memory _offerParams,
+        address _ip
     )
         internal
         override
         returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid)
-    { }
+    {
+        IPOfferParams memory params = abi.decode(_offerParams, (IPOfferParams));
+        incentivesOffered = params.incentivesOffered;
+        incentiveAmountsPaid = params.incentiveAmountsPaid;
+        valid = true;
+    }
+
+    function _processIPOfferFill(
+        bytes32 _marketHash,
+        bytes memory _marketParams,
+        bytes32 _offerHash,
+        bytes memory _offerParams,
+        bytes memory _fillParams,
+        address _ap
+    )
+        internal
+        override
+        returns (bool validIPOfferFill, uint256 ratioToPayOnFill)
+    {
+        validIPOfferFill = true;
+        ratioToPayOnFill = 0;
+    }
+
+    function _processAPOfferCreation(
+        bytes32 _marketHash,
+        bytes memory _marketParams,
+        bytes32 _offerHash,
+        bytes memory _offerParams,
+        address _ap
+    )
+        internal
+        override
+        returns (bool validAPOfferCreation, address[] memory incentivesRequested, uint256[] memory incentiveAmountsRequested)
+    {
+        validAPOfferCreation = false;
+        incentivesRequested = new address[](0);
+        incentiveAmountsRequested = new uint256[](0);
+    }
+
+    function _processAPOfferFill(
+        bytes32 _marketHash,
+        bytes memory _marketParams,
+        bytes32 _offerHash,
+        bytes memory _offerParams,
+        bytes memory _fillParams,
+        address _ip
+    )
+        internal
+        override
+        returns (bool validAPOfferFill, uint256 ratioToPayOnFill)
+    {
+        validAPOfferFill = false;
+        ratioToPayOnFill = 0;
+    }
+
+    function _claim(bytes memory _claimParams, address _ap) internal override returns (bool validClaim, uint256 ratioToPayOnClaim) {
+        validClaim = false;
+        ratioToPayOnClaim = 0;
+    }
 }
