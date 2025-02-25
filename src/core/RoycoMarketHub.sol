@@ -58,6 +58,11 @@ contract RoycoMarketHub is Ownable2Step {
         uint256[] frontendFeeAmounts
     );
 
+    /// @param claimant The address that claimed the fees
+    /// @param incentive The address of the incentive claimed as a fee
+    /// @param amount The amount of fees claimed
+    event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
+
     error MarketCreationFailed();
     error IPOfferCreationFailed();
     error OnlyMarketCreator();
@@ -78,7 +83,9 @@ contract RoycoMarketHub is Ownable2Step {
 
     uint256 numMarkets;
     uint256 numOffers;
+
     uint256 protocolFee;
+    address protocolFeeClaimant;
     uint256 minFrontendFee;
 
     constructor(address _owner) Ownable(_owner) {
@@ -118,19 +125,145 @@ contract RoycoMarketHub is Ownable2Step {
     }
 
     function addIncentivesToMarket(bytes32 _marketHash, address[] calldata _incentivesOffered, uint256[] calldata _incentiveAmounts) external {
+        // Get the IAM by its market hash
         IAM storage market = marketHashToIAM[_marketHash];
+
         // Basic sanity checks
         require(msg.sender == market.ip, OnlyMarketCreator());
         require(market.incentiveType == IncentiveType.PER_MARKET, MarketHasIncentivesPerOffer());
 
+        // Pull incentives from the IP
+        (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
+            _pullIncentives(_incentivesOffered, _incentiveAmounts, market.frontendFee);
+
+        // Set incentives and fees in the market's mappings
+        for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
+            address incentive = _incentivesOffered[i];
+
+            market.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
+            market.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
+            market.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
+        }
+
+        // Emit incentives added event
+        emit IncentivesAddedToMarket(_marketHash, msg.sender, _incentivesOffered, incentiveAmountsOffered, protocolFeesToBePaid, frontendFeesToBePaid);
+    }
+
+    function createIPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 offerHash) {
+        // Calculate the IP offer hash
+        offerHash = keccak256(abi.encode(++numOffers, _marketHash, _offerParams));
+
+        // Get the IAM by its market hash
+        IAM storage market = marketHashToIAM[_marketHash];
+        // Verify that the offer params are valid for this action verifier
+        (bool validIPOffer, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid) =
+            IActionVerifier(market.actionVerifier).processIPOfferCreation(offerHash, msg.sender, _offerParams);
+        require(validIPOffer, IPOfferCreationFailed());
+
+        // Store the IP Offer in persistent storage
+        IPOffer storage ipOffer = offerHashToIPOffer[offerHash];
+        ipOffer.marketHash = _marketHash;
+        ipOffer.ip = msg.sender;
+        ipOffer.offerParams = _offerParams;
+        ipOffer.incentivesOffered = incentivesOffered;
+
+        // If incentives are a part of the market's offers pull them from the IP and store a record
+        if (market.incentiveType == IncentiveType.PER_OFFER) {
+            // Pull incentives from the IP
+            (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid) =
+                _pullIncentives(incentivesOffered, incentiveAmountsPaid, market.frontendFee);
+
+            // Set incentives and fees in the offer's mappings
+            for (uint256 i = 0; i < incentivesOffered.length; ++i) {
+                address incentive = incentivesOffered[i];
+
+                ipOffer.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
+                ipOffer.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
+                ipOffer.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
+            }
+        }
+    }
+
+    function fillIPOffer(bytes32 _ipOfferHash, bytes calldata fillParams, address _frontendFeeRecipient) external returns (bytes32 offerHash) {
+        // Get the IP offer from its hash
+        IPOffer storage ipOffer = offerHashToIPOffer[offerHash];
+
+        // Get the IAM by its market hash
+        IAM storage market = marketHashToIAM[ipOffer.marketHash];
+        // Verify that the offer params are valid for this action verifier
+        (bool validIPOfferFill, uint256 ratioToPayOnFill) = IActionVerifier(market.actionVerifier).processIPOfferFill(offerHash, msg.sender, fillParams);
+        require(validIPOfferFill, IPOfferCreationFailed());
+
+        // Number of incentives offered by the IP
+        uint256 numIncentives = ipOffer.incentivesOffered.length;
+        // Arrays to store incentives and fee amounts to be paid
+        uint256[] memory incentiveAmountsPaid = new uint256[](numIncentives);
+        uint256[] memory protocolFeesPaid = new uint256[](numIncentives);
+        uint256[] memory frontendFeesPaid = new uint256[](numIncentives);
+
+        if (ratioToPayOnFill > 0) {
+            // Perform incentive accounting on a per incentive basis
+            for (uint256 i = 0; i < numIncentives; ++i) {
+                // Incentive address
+                address incentive = ipOffer.incentivesOffered[i];
+
+                // Calculate fees to take based on percentage of fill
+                protocolFeesPaid[i] = ipOffer.incentiveToProtocolFeeAmount[incentive].mulWadDown(ratioToPayOnFill);
+                frontendFeesPaid[i] = ipOffer.incentiveToFrontendFeeAmount[incentive].mulWadDown(ratioToPayOnFill);
+
+                // Calculate incentives to give based on percentage of fill
+                incentiveAmountsPaid[i] = ipOffer.incentiveAmountsOffered[incentive].mulWadDown(ratioToPayOnFill);
+
+                // Push incentives to AP and account fees on fill in an upfront market
+                _pushIncentivesAndAccountFees(
+                    incentive, msg.sender, incentiveAmountsPaid[i], protocolFeesPaid[i], frontendFeesPaid[i], ipOffer.ip, _frontendFeeRecipient
+                );
+            }
+        }
+    }
+
+    /// @param incentiveToken The incentive token to claim fees for
+    /// @param to The address to send fees claimed to
+    function claimFees(address incentiveToken, address to) external payable {
+        uint256 amount = feeClaimantToTokenToAmount[msg.sender][incentiveToken];
+        delete feeClaimantToTokenToAmount[msg.sender][incentiveToken];
+        ERC20(incentiveToken).safeTransfer(to, amount);
+        emit FeesClaimed(msg.sender, incentiveToken, amount);
+    }
+
+    /// @notice Sets the protocol fee recipient, taken on all fills
+    /// @param _protocolFeeClaimant The address allowed to claim protocol fees
+    function setProtocolFeeClaimant(address _protocolFeeClaimant) external payable onlyOwner {
+        protocolFeeClaimant = _protocolFeeClaimant;
+    }
+
+    /// @notice Sets the protocol fee rate, taken on all fills
+    /// @param _protocolFee The percent deducted from the IP's incentive amount and claimable by protocolFeeClaimant, 1e18 == 100% fee
+    function setProtocolFee(uint256 _protocolFee) external payable onlyOwner {
+        protocolFee = _protocolFee;
+    }
+
+    /// @notice Sets the minimum frontend fee that a market can set and is paid to whoever fills the offer
+    /// @param _minFrontendFee The minimum frontend fee for a market, 1e18 == 100% fee
+    function setMinimumFrontendFee(uint256 _minFrontendFee) external payable onlyOwner {
+        minFrontendFee = _minFrontendFee;
+    }
+
+    function _pullIncentives(
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmounts,
+        uint64 frontendFee
+    )
+        internal
+        returns (uint256[] memory incentiveAmountsOffered, uint256[] memory protocolFeesToBePaid, uint256[] memory frontendFeesToBePaid)
+    {
         // To keep track of incentives allocated to the AP and fees (per incentive)
-        uint256[] memory incentiveAmountsOffered = new uint256[](_incentivesOffered.length);
-        uint256[] memory protocolFeesToBePaid = new uint256[](_incentivesOffered.length);
-        uint256[] memory frontendFeesToBePaid = new uint256[](_incentivesOffered.length);
+        incentiveAmountsOffered = new uint256[](_incentivesOffered.length);
+        protocolFeesToBePaid = new uint256[](_incentivesOffered.length);
+        frontendFeesToBePaid = new uint256[](_incentivesOffered.length);
 
         // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
         address lastIncentive;
-        uint64 frontendFee = market.frontendFee;
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             // Get the incentive offered
             address incentive = _incentivesOffered[i];
@@ -174,36 +307,53 @@ contract RoycoMarketHub is Ownable2Step {
                 ERC20(incentive).safeTransferFrom(msg.sender, address(this), incentiveAmount + protocolFeeAmount + frontendFeeAmount);
             }
         }
-
-        // Set incentives and fees in the offer mapping
-        for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
-            address incentive = _incentivesOffered[i];
-
-            market.incentiveAmountsOffered[incentive] += incentiveAmountsOffered[i];
-            market.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
-            market.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
-        }
-
-        // Emit incentives added event
-        emit IncentivesAddedToMarket(_marketHash, msg.sender, _incentivesOffered, incentiveAmountsOffered, protocolFeesToBePaid, frontendFeesToBePaid);
     }
 
-    function createIPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 offerHash) {
-        // Calculate the IP offer hash
-        offerHash = keccak256(abi.encode(++numOffers, _marketHash, _offerParams));
+    /**
+     * @notice Handles the transfer and accounting of fees and incentives.
+     * @dev This function is called internally to account fees and push incentives.
+     * @param incentive The address of the incentive.
+     * @param to The address of incentive recipient.
+     * @param incentiveAmount The amount of the incentive token to be transferred.
+     * @param protocolFeeAmount The protocol fee amount taken at fill.
+     * @param frontendFeeAmount The frontend fee amount taken for this market.
+     * @param ip The address of the action provider.
+     * @param frontendFeeRecipient The address that will receive the frontend fee.
+     */
+    function _pushIncentivesAndAccountFees(
+        address incentive,
+        address to,
+        uint256 incentiveAmount,
+        uint256 protocolFeeAmount,
+        uint256 frontendFeeAmount,
+        address ip,
+        address frontendFeeRecipient
+    )
+        internal
+    {
+        // Take fees
+        _accountFee(protocolFeeClaimant, incentive, protocolFeeAmount, ip);
+        _accountFee(frontendFeeRecipient, incentive, frontendFeeAmount, ip);
 
-        // Get the IAM by its market hash
-        IAM storage market = marketHashToIAM[_marketHash];
-        // Verify that the offer params are valid for this action verifier
-        (bool validIPOffer, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid) =
-            IActionVerifier(market.actionVerifier).processIPOfferCreation(offerHash, msg.sender, _offerParams);
-        require(validIPOffer, IPOfferCreationFailed());
+        // Push incentives to AP
+        if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
+            Points(incentive).award(to, incentiveAmount, ip);
+        } else {
+            ERC20(incentive).safeTransfer(to, incentiveAmount);
+        }
+    }
 
-        // Store the IP Offer in persistent storage
-        IPOffer storage ipOffer = offerHashToIPOffer[offerHash];
-        ipOffer.marketHash = _marketHash;
-        ipOffer.ip = msg.sender;
-        ipOffer.offerParams = _offerParams;
-        ipOffer.incentivesOffered = incentivesOffered;
+    /// @param recipient The address to send fees to
+    /// @param incentive The incentive address where fees are accrued in
+    /// @param amount The amount of fees to award
+    /// @param ip The incentive provider if awarding points
+    function _accountFee(address recipient, address incentive, uint256 amount, address ip) internal {
+        //check to see the incentive is actually a points campaign
+        if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
+            // Points cannot be claimed and are rather directly awarded
+            Points(incentive).award(recipient, amount, ip);
+        } else {
+            feeClaimantToTokenToAmount[recipient][incentive] += amount;
+        }
     }
 }
