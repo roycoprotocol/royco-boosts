@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title ActionVerifierBase
-/// @notice Base contract that enforces all action verifier functions to be callable only by the Royco Market Hub.
+/// @notice Base contract that enforces all external action verifier functions to be only callable by the Royco Market Hub.
 abstract contract ActionVerifierBase is IActionVerifier {
     /// @notice Address of the official Royco Market Hub.
     address public immutable ROYCO_MARKET_HUB;
@@ -144,13 +144,22 @@ abstract contract ActionVerifierBase is IActionVerifier {
 
     /**
      * @notice Processes a claim by validating the provided parameters.
+     * @param _marketHash A unique hash identifier for the market.
      * @param _claimParams Encoded parameters required for processing the claim.
      * @param _ap The address of the Action Provider.
      * @return validClaim Returns true if the claim is valid.
      * @return ratioToPayOnClaim A ratio determining the payment amount upon claim.
      */
-    function claim(bytes memory _claimParams, address _ap) external onlyRoycoMarketHub returns (bool validClaim, uint256 ratioToPayOnClaim) {
-        (validClaim, ratioToPayOnClaim) = _claim(_claimParams, _ap);
+    function claim(
+        bytes32 _marketHash,
+        bytes memory _claimParams,
+        address _ap
+    )
+        external
+        onlyRoycoMarketHub
+        returns (bool validClaim, uint256 ratioToPayOnClaim)
+    {
+        (validClaim, ratioToPayOnClaim) = _claim(_marketHash, _claimParams, _ap);
     }
 
     /**
@@ -253,10 +262,11 @@ abstract contract ActionVerifierBase is IActionVerifier {
 
     /**
      * @dev Internal function to process a claim.
+     * @param _marketHash A unique hash identifier for the market.
      * @param _claimParams Encoded parameters required for processing the claim.
      * @param _ap The address of the Action Provider.
      * @return validClaim Returns true if the claim is valid.
      * @return ratioToPayOnClaim A ratio determining the payment amount upon claim.
      */
-    function _claim(bytes memory _claimParams, address _ap) internal virtual returns (bool validClaim, uint256 ratioToPayOnClaim);
+    function _claim(bytes32 _marketHash, bytes memory _claimParams, address _ap) internal virtual returns (bool validClaim, uint256 ratioToPayOnClaim);
 }

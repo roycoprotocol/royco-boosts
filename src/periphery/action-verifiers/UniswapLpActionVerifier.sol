@@ -111,7 +111,7 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
         ratioToPayOnFill = 0;
     }
 
-    function _claim(bytes memory _claimParams, address _ap) internal override returns (bool validClaim, uint256 ratioToPayOnClaim) {
+    function _claim(bytes32 _marketHash, bytes memory _claimParams, address _ap) internal override returns (bool validClaim, uint256 ratioToPayOnClaim) {
         validClaim = false;
         ratioToPayOnClaim = 0;
     }
