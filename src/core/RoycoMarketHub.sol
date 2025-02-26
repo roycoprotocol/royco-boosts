@@ -8,11 +8,6 @@ import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib
 import { PointsFactory, Points } from "../periphery/points/PointsFactory.sol";
 import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
-enum IncentiveType {
-    PER_MARKET,
-    PER_OFFER
-}
-
 contract RoycoMarketHub is Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
@@ -21,10 +16,6 @@ contract RoycoMarketHub is Ownable2Step {
         uint64 frontendFee;
         address actionVerifier;
         bytes marketParams;
-        address[] incentivesOffered;
-        mapping(address => uint256) incentiveAmountsOffered; // amounts to be allocated to APs (per incentive)
-        mapping(address => uint256) incentiveToProtocolFeeAmount; // amounts to be allocated to protocolFeeClaimant (per incentive)
-        mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
     }
 
     struct IPOffer {
@@ -41,13 +32,16 @@ contract RoycoMarketHub is Ownable2Step {
         bytes32 marketHash;
         address ap;
         bytes offerParams;
+        address[] incentivesRequested;
+        uint256[] incentiveAmountsRequested;
     }
 
     event MarketCreated(bytes32 indexed marketHash, address indexed ip, address indexed actionVerifer, bytes marketParams, uint96 frontendFee);
 
-    event IncentivesAddedToMarket(
+    event IPOfferCreated(
         bytes32 indexed marketHash,
         address indexed ip,
+        bytes offerParams,
         address[] incentivesOffered,
         uint256[] incentiveAmounts,
         uint256[] protocolFeeAmounts,
@@ -61,6 +55,7 @@ contract RoycoMarketHub is Ownable2Step {
 
     error MarketCreationFailed();
     error IPOfferCreationFailed();
+    error APOfferCreationFailed();
     error OnlyMarketCreator();
     error InvalidFrontendFee();
     error MarketHasIncentivesPerOffer();
@@ -110,19 +105,19 @@ contract RoycoMarketHub is Ownable2Step {
         emit MarketCreated(marketHash, msg.sender, _actionVerifier, _marketParams, _frontendFee);
     }
 
-    function createIPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 offerHash) {
+    function createIPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 ipOfferHash) {
         // Calculate the IP offer hash
-        offerHash = keccak256(abi.encode(++numOffers, _marketHash, _offerParams));
+        ipOfferHash = keccak256(abi.encode(++numOffers, _marketHash, _offerParams));
 
         // Get the IAM by its market hash
         IAM storage market = marketHashToIAM[_marketHash];
         // Verify that the offer params are valid for this action verifier
-        (bool validIPOffer, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid) =
-            IActionVerifier(market.actionVerifier).processIPOfferCreation(_marketHash, market.marketParams, offerHash, _offerParams, msg.sender);
-        require(validIPOffer, IPOfferCreationFailed());
+        (bool validIPOfferCreation, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid) =
+            IActionVerifier(market.actionVerifier).processIPOfferCreation(_marketHash, market.marketParams, ipOfferHash, _offerParams, msg.sender);
+        require(validIPOfferCreation, IPOfferCreationFailed());
 
         // Store the IP Offer in persistent storage
-        IPOffer storage ipOffer = offerHashToIPOffer[offerHash];
+        IPOffer storage ipOffer = offerHashToIPOffer[ipOfferHash];
         ipOffer.marketHash = _marketHash;
         ipOffer.ip = msg.sender;
         ipOffer.offerParams = _offerParams;
@@ -140,6 +135,29 @@ contract RoycoMarketHub is Ownable2Step {
             ipOffer.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
             ipOffer.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
         }
+
+        // Emit event for IP Offer creation
+        emit IPOfferCreated(_marketHash, msg.sender, _offerParams, incentivesOffered, incentiveAmountsOffered, protocolFeesToBePaid, frontendFeesToBePaid);
+    }
+
+    function createAPOffer(bytes32 _marketHash, bytes calldata _offerParams) external returns (bytes32 apOfferHash) {
+        // Calculate the IP offer hash
+        apOfferHash = keccak256(abi.encode(++numOffers, _marketHash, _offerParams));
+
+        // Get the IAM by its market hash
+        IAM storage market = marketHashToIAM[_marketHash];
+        // Verify that the offer params are valid for this action verifier
+        (bool validAPOfferCreation, address[] memory incentivesRequested, uint256[] memory incentiveAmountsRequested) =
+            IActionVerifier(market.actionVerifier).processAPOfferCreation(_marketHash, market.marketParams, apOfferHash, _offerParams, msg.sender);
+        require(validAPOfferCreation, APOfferCreationFailed());
+
+        // Store the AP Offer in persistent storage
+        APOffer storage apOffer = offerHashToAPOffer[apOfferHash];
+        apOffer.marketHash = _marketHash;
+        apOffer.ap = msg.sender;
+        apOffer.offerParams = _offerParams;
+        apOffer.incentivesRequested = incentivesRequested;
+        apOffer.incentiveAmountsRequested = incentiveAmountsRequested;
     }
 
     function fillIPOffer(bytes32 _ipOfferHash, bytes calldata fillParams, address _frontendFeeRecipient) external {
@@ -182,13 +200,13 @@ contract RoycoMarketHub is Ownable2Step {
         }
     }
 
-    /// @param incentiveToken The incentive token to claim fees for
-    /// @param to The address to send fees claimed to
-    function claimFees(address incentiveToken, address to) external payable {
-        uint256 amount = feeClaimantToTokenToAmount[msg.sender][incentiveToken];
-        delete feeClaimantToTokenToAmount[msg.sender][incentiveToken];
-        ERC20(incentiveToken).safeTransfer(to, amount);
-        emit FeesClaimed(msg.sender, incentiveToken, amount);
+    /// @param _incentiveToken The incentive token to claim fees for
+    /// @param _to The address to send fees claimed to
+    function claimFees(address _incentiveToken, address _to) external payable {
+        uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
+        delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
+        ERC20(_incentiveToken).safeTransfer(_to, amount);
+        emit FeesClaimed(msg.sender, _incentiveToken, amount);
     }
 
     /// @notice Sets the protocol fee recipient, taken on all fills

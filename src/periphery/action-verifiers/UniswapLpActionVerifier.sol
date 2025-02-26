@@ -36,14 +36,14 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
         UNISWAP_V3_FACTORY = _uniV3Factory;
     }
 
-    function _processMarketCreation(bytes32, bytes memory _marketParams) internal view override returns (bool valid) {
+    function _processMarketCreation(bytes32, bytes memory _marketParams) internal view override returns (bool validMarketCreation) {
         MarketParams memory params = abi.decode(_marketParams, (MarketParams));
         IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
         address token0 = pool.token0();
         address token1 = pool.token1();
         uint24 fee = pool.fee();
         address actualPool = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(token0, token1, fee);
-        valid = (actualPool == address(pool));
+        validMarketCreation = (actualPool == address(pool));
     }
 
     function _processIPOfferCreation(
@@ -55,12 +55,12 @@ contract UniswapLpActionVerifier is ActionVerifierBase {
     )
         internal
         override
-        returns (bool valid, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid)
+        returns (bool validIPOfferCreation, address[] memory incentivesOffered, uint256[] memory incentiveAmountsPaid)
     {
         IPOfferParams memory params = abi.decode(_offerParams, (IPOfferParams));
         incentivesOffered = params.incentivesOffered;
         incentiveAmountsPaid = params.incentiveAmountsPaid;
-        valid = true;
+        validIPOfferCreation = true;
     }
 
     function _processIPOfferFill(
