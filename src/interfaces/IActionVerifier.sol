@@ -16,13 +16,13 @@ interface IActionVerifier {
 
     /**
      * @notice Processes a claim by validating the provided parameters.
-     * @param _marketHash A unique hash identifier for the market.
+     * @param _ipOfferHash A unique hash identifier for the IP offer to claim incentives for.
      * @param _claimParams Encoded parameters required for processing the claim.
      * @param _ap The address of the Action Provider.
      * @return validClaim Returns true if the claim is valid.
      * @return ratioToPayOnClaim A ratio determining the payment amount upon claim.
      */
-    function claim(bytes32 _marketHash, bytes memory _claimParams, address _ap)
+    function claim(bytes32 _ipOfferHash, bytes memory _claimParams, address _ap)
         external
-        returns (bool validClaim, uint256 ratioToPayOnClaim);
+        returns (bool validClaim, uint64 ratioToPayOnClaim);
 }
