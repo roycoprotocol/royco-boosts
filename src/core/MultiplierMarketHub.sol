@@ -44,6 +44,18 @@ contract MultiplierMarketHub is Ownable2Step {
         uint96 frontendFee
     );
 
+    event IPOfferCreated(
+        bytes32 indexed marketHash,
+        bytes32 indexed offerHash,
+        address indexed ip,
+        uint48 startBlock,
+        uint48 endBlock,
+        address[] incentivesOffered,
+        uint256[] incentiveAmounts,
+        uint256[] protocolFeeAmounts,
+        uint256[] frontendFeeAmounts
+    );
+
     /// @param claimant The address that claimed the fees
     /// @param incentive The address of the incentive claimed as a fee
     /// @param amount The amount of fees claimed
@@ -140,6 +152,18 @@ contract MultiplierMarketHub is Ownable2Step {
             ipOffer.incentiveToProtocolFeeAmount[incentive] += protocolFeesToBePaid[i];
             ipOffer.incentiveToFrontendFeeAmount[incentive] += frontendFeesToBePaid[i];
         }
+
+        emit IPOfferCreated(
+            _marketHash,
+            ipOfferHash,
+            msg.sender,
+            _startBlock,
+            _endBlock,
+            _incentivesOffered,
+            incentiveAmountsOffered,
+            protocolFeesToBePaid,
+            frontendFeesToBePaid
+        );
     }
 
     function createAPOffer(bytes32 _ipOfferHash, uint96 _multiplier) external returns (bytes32 apOfferHash) {
