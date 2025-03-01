@@ -42,29 +42,28 @@ contract Points is Ownable2Step {
     string public symbol;
     /// @dev We track all points logic using base 1
     uint256 public decimals;
-    /// @dev Track which RoycoMarketHub IPs are allowed to mint
+    /// @dev Track which IncentiveLocker IPs are allowed to mint
     mapping(address => bool) public allowedIPs;
 
     /*//////////////////////////////////////////////////////////////
                               POINTS AUTH
     //////////////////////////////////////////////////////////////*/
 
-    /// @param ip The incentive provider address to allow to mint points on RoycoMarketHub
+    /// @param ip The incentive provider address to allow to mint points on IncentiveLocker
     function addAllowedIPs(address ip) external onlyOwner {
         allowedIPs[ip] = true;
 
         emit AllowedIPAdded(ip);
     }
 
-    error OnlyAllowedVaults();
-    error OnlyRoycoMarketHub();
+    error OnlyIncentiveLocker();
     error NotAllowedIP();
 
-    /// @dev only the RoycoMarketHub can call this function
+    /// @dev only the IncentiveLocker can call this function
     /// @param ip The address to check if allowed
-    modifier onlyRoycoMarketHubAllowedIP(address ip) {
-        if (!pointsFactory.isRoycoMarketHub(msg.sender)) {
-            revert OnlyRoycoMarketHub();
+    modifier onlyIncentiveLockerAllowedIP(address ip) {
+        if (!pointsFactory.isIncentiveLocker(msg.sender)) {
+            revert OnlyIncentiveLocker();
         }
         if (!allowedIPs[ip]) {
             revert NotAllowedIP();
@@ -79,7 +78,7 @@ contract Points is Ownable2Step {
     /// @param to The address to mint points to
     /// @param amount  The amount of points to award to the `to` address
     /// @param ip The incentive provider attempting to mint the points
-    function award(address to, uint256 amount, address ip) external onlyRoycoMarketHubAllowedIP(ip) {
+    function award(address to, uint256 amount, address ip) external onlyIncentiveLockerAllowedIP(ip) {
         emit Award(to, amount, ip);
     }
 }

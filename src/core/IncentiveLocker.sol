@@ -8,15 +8,20 @@ import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.s
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
+/// @title IncentiveLocker
+/// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
+/// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
 contract IncentiveLocker is Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
+    /// @notice Address of the PointsFactory contract.
     address public immutable POINTS_FACTORY;
 
-    struct Rewards {
-        uint64 frontendFee;
-        address entryPoint;
+    /// @notice Stores details of an incentive offer.
+    /// @dev Contains the entrypoint, action verifier, offered incentive tokens, and fee breakdown mappings.
+    struct IncentiveInfo {
+        address entrypoint;
         address actionVerifier;
         address[] incentivesOffered;
         mapping(address => uint256) incentiveAmountsOffered; // amounts to be allocated to APs (per incentive)
@@ -24,14 +29,40 @@ contract IncentiveLocker is Ownable2Step {
         mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
     }
 
-    mapping(address => mapping(bytes32 => Rewards)) public entrypointToIdToReward;
+    /// @notice Mapping from entrypoint and incentive ID to incentive information.
+    mapping(address => mapping(bytes32 => IncentiveInfo)) public entrypointToIdToIncentiveInfo;
 
-    // Structure to store each fee claimant's accrued fees for a particular incentive token (claimant => incentive token => feesAccrued)
+    /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address => mapping(address => uint256)) public feeClaimantToTokenToAmount;
 
+    /// @notice Protocol fee rate (1e18 equals 100% fee).
     uint64 public protocolFee;
+
+    /// @notice Address allowed to claim protocol fees.
     address public protocolFeeClaimant;
+
+    /// @notice Minimum frontend fee required for a market.
     uint64 public minimumFrontendFee;
+
+    /// @notice Emitted when incentives are added to the locker.
+    /// @param entrypoint The address initiating the incentive addition.
+    /// @param incentiveID Unique identifier for the incentive. Up to the entrypoint to determine.
+    /// @param actionVerifier The address verifying the incentive conditions.
+    /// @param ip The address of the incentive provider.
+    /// @param incentivesOffered Array of incentive token addresses.
+    /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
+    /// @param protocolFeesToBePaid Array of protocol fee amounts allocated per incentive.
+    /// @param frontendFeesToBePaid Array of frontend fee amounts allocated per incentive.
+    event IncentivesAdded(
+        address indexed entrypoint,
+        bytes32 indexed incentiveID,
+        address indexed actionVerifier,
+        address ip,
+        address[] incentivesOffered,
+        uint256[] incentiveAmountsOffered,
+        uint256[] protocolFeesToBePaid,
+        uint256[] frontendFeesToBePaid
+    );
 
     /// @param claimant The address that claimed the fees
     /// @param incentive The address of the incentive claimed as a fee
@@ -45,6 +76,11 @@ contract IncentiveLocker is Ownable2Step {
     error OfferCannotContainDuplicateIncentives();
     error InvalidClaim();
 
+    /// @notice Initializes the IncentiveLocker contract.
+    /// @param _owner Address of the contract owner.
+    /// @param _pointsFactory Address of the PointsFactory contract.
+    /// @param _protocolFee Protocol fee rate (1e18 equals 100% fee).
+    /// @param _minimumFrontendFee Minimum frontend fee required.
     constructor(address _owner, address _pointsFactory, uint64 _protocolFee, uint64 _minimumFrontendFee)
         Ownable(_owner)
     {
@@ -55,19 +91,75 @@ contract IncentiveLocker is Ownable2Step {
         minimumFrontendFee = _minimumFrontendFee;
     }
 
-    function addRewards(
-        bytes32 _rewardId,
+    /// @notice Adds incentives to the incentive locker on behalf of the entrypoint.
+    /// @param _incentiveID Unique identifier for the incentive. Up to the entrypoint to determine.
+    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentiveAmountsPaid Array of total amounts paid for each incentive (including fees).
+    /// @param _actionVerifier Address of the action verifier.
+    /// @param _ip Address of the incentive provider.
+    /// @param _frontendFee Frontend fee rate for the market.
+    function addIncentives(
+        bytes32 _incentiveID,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsPaid,
+        address _actionVerifier,
         address _ip,
         uint64 _frontendFee
     ) external {
+        uint256 numIncentives = _incentivesOffered.length;
         // Check that the frontend fee is valid
         require(_frontendFee > minimumFrontendFee && (protocolFee + _frontendFee) <= 1e18, InvalidFrontendFee());
+        // Check that all incentives have a corresponding amount
+        require(numIncentives == _incentiveAmountsPaid.length, ArrayLengthMismatch());
+
+        // Pull the incentives from the IP
+        (
+            uint256[] memory incentiveAmountsOffered,
+            uint256[] memory protocolFeesToBePaid,
+            uint256[] memory frontendFeesToBePaid
+        ) = _pullIncentives(_ip, _incentivesOffered, _incentiveAmountsPaid, _frontendFee);
+
+        // Store the incentive information in persistent storage
+        IncentiveInfo storage incentiveInfo = entrypointToIdToIncentiveInfo[msg.sender][_incentiveID];
+        incentiveInfo.entrypoint = msg.sender;
+        incentiveInfo.actionVerifier = _actionVerifier;
+        incentiveInfo.incentivesOffered = _incentivesOffered;
+
+        // Set incentives and fees in the incentiveInfo mapping
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            address incentive = _incentivesOffered[i];
+
+            incentiveInfo.incentiveAmountsOffered[incentive] = incentiveAmountsOffered[i];
+            incentiveInfo.incentiveToProtocolFeeAmount[incentive] = protocolFeesToBePaid[i];
+            incentiveInfo.incentiveToFrontendFeeAmount[incentive] = frontendFeesToBePaid[i];
+        }
+
+        // Emit event for adding incentives
+        emit IncentivesAdded(
+            msg.sender,
+            _incentiveID,
+            _actionVerifier,
+            _ip,
+            _incentivesOffered,
+            incentiveAmountsOffered,
+            protocolFeesToBePaid,
+            frontendFeesToBePaid
+        );
     }
 
-    /// @param _incentiveToken The incentive token to claim fees for
-    /// @param _to The address to send fees claimed to
+    /// @notice Claims incentives for given incentive IDs.
+    /// @param _incentiveIDs Array of incentive identifiers.
+    /// @param _claimParams Array of claim parameters for each incentive.
+    /// @param _frontendFeeRecipient Address to receive the frontend fee.
+    function claimIncentives(
+        bytes32[] calldata _incentiveIDs,
+        bytes[] calldata _claimParams,
+        address _frontendFeeRecipient
+    ) external {}
+
+    /// @notice Claims accrued fees for a given incentive token.
+    /// @param _incentiveToken The address of the incentive token.
+    /// @param _to The recipient address for the claimed fees.
     function claimFees(address _incentiveToken, address _to) external payable {
         uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
         delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
@@ -75,24 +167,32 @@ contract IncentiveLocker is Ownable2Step {
         emit FeesClaimed(msg.sender, _incentiveToken, amount);
     }
 
-    /// @notice Sets the protocol fee recipient, taken on all fills
-    /// @param _protocolFeeClaimant The address allowed to claim protocol fees
+    /// @notice Sets the protocol fee recipient.
+    /// @param _protocolFeeClaimant Address allowed to claim protocol fees.
     function setProtocolFeeClaimant(address _protocolFeeClaimant) external payable onlyOwner {
         protocolFeeClaimant = _protocolFeeClaimant;
     }
 
-    /// @notice Sets the protocol fee rate, taken on all fills
-    /// @param _protocolFee The percent deducted from the IP's incentive amount and claimable by protocolFeeClaimant, 1e18 == 100% fee
+    /// @notice Sets the protocol fee rate.
+    /// @param _protocolFee The new protocol fee rate (1e18 equals 100% fee).
     function setProtocolFee(uint64 _protocolFee) external payable onlyOwner {
         protocolFee = _protocolFee;
     }
 
-    /// @notice Sets the minimum frontend fee that a market can set and is paid to whoever fills the offer
-    /// @param _minFrontendFee The minimum frontend fee for a market, 1e18 == 100% fee
+    /// @notice Sets the minimum frontend fee for a market.
+    /// @param _minFrontendFee The new minimum frontend fee (1e18 equals 100% fee).
     function setMinimumFrontendFee(uint64 _minFrontendFee) external payable onlyOwner {
         minimumFrontendFee = _minFrontendFee;
     }
 
+    /// @notice Pulls incentives from the incentive provider and calculates fee breakdowns.
+    /// @param _ip Address of the incentive provider.
+    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentiveAmounts Total amounts provided for each incentive (including fees).
+    /// @param _frontendFee Frontend fee rate.
+    /// @return incentiveAmountsOffered Net incentive amounts offered (after fee deduction).
+    /// @return protocolFeesToBePaid Protocol fee amounts for each incentive.
+    /// @return frontendFeesToBePaid Frontend fee amounts for each incentive.
     function _pullIncentives(
         address _ip,
         address[] memory _incentivesOffered,
@@ -142,7 +242,7 @@ contract IncentiveLocker is Ownable2Step {
             // Check if incentive is a points program
             if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
                 // If points incentive, make sure:
-                // 1. The points factory used to create the program is the same as this RecipeMarketHubs PF
+                // 1. The points factory used to create the program is the same as this RecipeMarketHub's PF
                 // 2. IP placing the offer can award points
                 // 3. Points factory has this RecipeMarketHub marked as a valid RO - can be assumed true
                 if (POINTS_FACTORY != address(Points(incentive).pointsFactory()) || !Points(incentive).allowedIPs(_ip))
@@ -160,17 +260,14 @@ contract IncentiveLocker is Ownable2Step {
         }
     }
 
-    /**
-     * @notice Handles the transfer and accounting of fees and incentives.
-     * @dev This function is called internally to account for fees and push incentives.
-     * @param incentive The address of the incentive.
-     * @param to The address of incentive recipient.
-     * @param incentiveAmount The amount of the incentive token to be transferred.
-     * @param protocolFeeAmount The protocol fee amount taken at fill.
-     * @param frontendFeeAmount The frontend fee amount taken for this market.
-     * @param ip The address of the action provider.
-     * @param frontendFeeRecipient The address that will receive the frontend fee.
-     */
+    /// @notice Transfers incentives to the action provider and accounts for fees.
+    /// @param incentive The address of the incentive token.
+    /// @param to Recipient address for the incentive.
+    /// @param incentiveAmount Net incentive amount to be transferred.
+    /// @param protocolFeeAmount Protocol fee amount.
+    /// @param frontendFeeAmount Frontend fee amount.
+    /// @param ip Address of the incentive provider.
+    /// @param frontendFeeRecipient Address to receive the frontend fee.
     function _pushIncentivesAndAccountFees(
         address incentive,
         address to,
@@ -192,12 +289,13 @@ contract IncentiveLocker is Ownable2Step {
         }
     }
 
-    /// @param recipient The address to send fees to
-    /// @param incentive The incentive address where fees are accrued in
-    /// @param amount The amount of fees to award
-    /// @param ip The incentive provider if awarding points
+    /// @notice Accounts fees for a recipient.
+    /// @param recipient Address to which fees are credited.
+    /// @param incentive The incentive token address.
+    /// @param amount Fee amount to be credited.
+    /// @param ip Address of the incentive provider (used for points programs).
     function _accountFee(address recipient, address incentive, uint256 amount, address ip) internal {
-        //check to see the incentive is actually a points campaign
+        // Check to see if the incentive is actually a points campaign
         if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
             // Points cannot be claimed and are rather directly awarded
             Points(incentive).award(recipient, amount, ip);

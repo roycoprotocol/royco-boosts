@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /// @title IActionVerifier
-/// @notice Interface for processing/verifying RoycoMarketHub actions.
+/// @notice Interface for processing/verifying  actions.
 interface IActionVerifier {
     /**
      * @notice Processes market creation by validating the provided parameters.
@@ -16,13 +16,12 @@ interface IActionVerifier {
 
     /**
      * @notice Processes a claim by validating the provided parameters.
-     * @param _ipOfferHash A unique hash identifier for the IP offer to claim incentives for.
-     * @param _claimParams Encoded parameters required for processing the claim.
      * @param _ap The address of the Action Provider.
+     * @param _claimParams Encoded parameters required for processing the claim.
      * @return validClaim Returns true if the claim is valid.
      * @return ratioToPayOnClaim A ratio determining the payment amount upon claim.
      */
-    function claim(bytes32 _ipOfferHash, bytes memory _claimParams, address _ap)
+    function verifyClaim(address _ap, bytes memory _claimParams)
         external
         returns (bool validClaim, uint64 ratioToPayOnClaim);
 }
