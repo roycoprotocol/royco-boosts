@@ -18,18 +18,6 @@ contract UniswapLpActionVerifier is IActionVerifier {
         address uniV3Pool;
     }
 
-    struct IPOfferParams {
-        uint32 startBlock;
-        uint32 endBlock;
-        address[] incentivesOffered;
-        uint256[] incentiveAmountsPaid;
-    }
-
-    struct APOfferParams {
-        bytes32 ipOfferHash;
-        uint256 multiplier;
-    }
-
     address public immutable UNISWAP_V3_FACTORY;
 
     constructor(address _uniV3Factory) {
@@ -46,11 +34,16 @@ contract UniswapLpActionVerifier is IActionVerifier {
         view
         returns (bool validMarketCreation)
     {
+        // Get the pool the IAM is being created for
         MarketParams memory params = abi.decode(_marketParams, (MarketParams));
         IUniswapV3Pool pool = IUniswapV3Pool(params.uniV3Pool);
+
+        // Get the pool metadata
         address token0 = pool.token0();
         address token1 = pool.token1();
         uint24 fee = pool.fee();
+
+        // Check this pool matches the official factory deployment
         address actualPool = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(token0, token1, fee);
         validMarketCreation = (actualPool == address(pool));
     }
