@@ -17,11 +17,12 @@ interface IActionVerifier {
     /**
      * @notice Processes a claim by validating the provided parameters.
      * @param _ap The address of the Action Provider.
+     * @param _incentiveId The identifier used by the Incentive Locker for the claim.
      * @param _claimParams Encoded parameters required for processing the claim.
      * @return validClaim Returns true if the claim is valid.
-     * @return ratioToPayOnClaim A ratio determining the payment amount upon claim.
+     * @return ratioOwed A ratio determining the payment amount upon claim.
      */
-    function verifyClaim(address _ap, bytes memory _claimParams)
+    function verifyClaim(address _ap, bytes32 _incentiveId, bytes memory _claimParams)
         external
-        returns (bool validClaim, uint64 ratioToPayOnClaim);
+        returns (bool validClaim, uint64 ratioOwed);
 }
