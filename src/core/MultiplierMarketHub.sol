@@ -74,6 +74,10 @@ contract MultiplierMarketHub {
         bytes32 indexed ipOfferHash, bytes32 indexed apOfferHash, address indexed ap, uint96 multiplier
     );
 
+    /// @param ipOfferHash The hash identifier of the associated IP offer.
+    /// @param ap The address of the Action Provider filling the offer.
+    event IPOfferFilled(bytes32 indexed ipOfferHash, address indexed ap);
+
     /// @notice Emitted when an AP offer is filled by the correct Incentive Provider.
     /// @param apOfferHash The hash identifier of the filled AP offer.
     /// @param ipOfferHash The hash identifier of the associated IP offer.
@@ -84,7 +88,7 @@ contract MultiplierMarketHub {
     );
 
     error InvalidMarketCreation();
-    error MustBeTheIpToFillOffer();
+    error OnlyTheIpCanFill();
     error IpOfferExpired();
 
     // -------------------------------------------------------------------------------------------
@@ -203,14 +207,29 @@ contract MultiplierMarketHub {
         emit APOfferCreated(_ipOfferHash, apOfferHash, msg.sender, _multiplier);
     }
 
-    /// @notice Fills an AP offer. Must be called by the IP.
+    /// @notice Fills an IP offer.
+    /// @dev Callable by APs.
+    /// @param _ipOfferHash IP offer identifier.
+    function fillIPOffer(bytes32 _ipOfferHash) external {
+        IPOffer storage ipOffer = offerHashToIPOffer[_ipOfferHash];
+
+        // Todo: Think about sybil attacks on this function which exhaust oracle resources (subgraph requests and rpc calls)
+        // Ensure the offer has not expired.
+        require(block.number <= ipOffer.endBlock, IpOfferExpired());
+
+        // Emit the event indicating the IP offer has been filled.
+        emit IPOfferFilled(_ipOfferHash, msg.sender);
+    }
+
+    /// @notice Fills an AP offer.
+    /// @dev Must be called by the IP of the IP offer which the AP offer counters.
     /// @param _apOfferHash AP offer identifier.
     function fillAPOffer(bytes32 _apOfferHash) external {
         APOffer storage apOffer = offerHashToAPOffer[_apOfferHash];
         IPOffer storage ipOffer = offerHashToIPOffer[apOffer.ipOfferHash];
 
         // Ensure the caller is the designated Incentive Provider.
-        require(msg.sender == ipOffer.ip, MustBeTheIpToFillOffer());
+        require(msg.sender == ipOffer.ip, OnlyTheIpCanFill());
         // Ensure the offer has not expired.
         require(block.number <= ipOffer.endBlock, IpOfferExpired());
 
