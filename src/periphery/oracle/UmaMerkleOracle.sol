@@ -38,7 +38,6 @@ abstract contract UmaMerkleOracle is Ownable2Step {
     );
 
     error UnauthorizedAsserter();
-    error InsufficientBondAmount();
 
     constructor(
         address _owner,
@@ -74,24 +73,8 @@ abstract contract UmaMerkleOracle is Ownable2Step {
         // Make sure the asserter is either the delegated asserter or the IP for this incentiveId
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
 
-        uint256 minBond = oo.getMinimumBond(address(bondCurrency));
-        _bondAmount = _bondAmount == 0 ? minBond : _bondAmount;
-        require(_bondAmount >= minBond, InsufficientBondAmount());
-
         bondCurrency.safeTransferFrom(msg.sender, address(this), _bondAmount);
         bondCurrency.safeApprove(address(oo), _bondAmount);
-
-        //  function assertTruth(
-        //     bytes memory claim,
-        //     address asserter,
-        //     address callbackRecipient,
-        //     address escalationManager,
-        //     uint64 liveness,
-        //     IERC20 currency,
-        //     uint256 bond,
-        //     bytes32 identifier,
-        //     bytes32 domainId
-        // ) external returns (bytes32);
 
         assertionId = oo.assertTruth(
             abi.encodePacked(
