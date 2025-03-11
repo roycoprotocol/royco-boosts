@@ -15,6 +15,8 @@ import {AncillaryData} from "../../libraries/AncillaryData.sol";
  * @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
  *         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
  *         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
+ * @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
+ *      and validating merkle roots for incentive claims.
  */
 abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
     using SafeTransferLib for ERC20;
