@@ -15,8 +15,8 @@ abstract contract UmaMerkleOracle is Ownable2Step {
     bytes32 public immutable defaultIdentifier;
     IncentiveLocker public immutable incentiveLocker;
 
-    address delegatedAsserter;
-    ERC20 public bondCurrency;
+    address public delegatedAsserter;
+    address public bondCurrency;
     uint64 public assertionLiveness;
 
     struct MerkleRootAssertion {
@@ -51,7 +51,7 @@ abstract contract UmaMerkleOracle is Ownable2Step {
         defaultIdentifier = oo.defaultIdentifier();
         incentiveLocker = IncentiveLocker(_incentiveLocker);
         delegatedAsserter = _delegatedAsserter;
-        bondCurrency = ERC20(_bondCurrency);
+        bondCurrency = _bondCurrency;
         assertionLiveness = _assertionLiveness;
     }
 
@@ -69,12 +69,16 @@ abstract contract UmaMerkleOracle is Ownable2Step {
         returns (bytes32 assertionId)
     {
         // Get the IP that placed the incentives for this incentive ID
-        (, address ip,,) = incentiveLocker.entrypointToIdToIncentiveInfo(_entrypoint, _incentiveId);
+        (, address ip,, address actionVerifier) =
+            incentiveLocker.entrypointToIdToIncentiveInfo(_entrypoint, _incentiveId);
         // Make sure the asserter is either the delegated asserter or the IP for this incentiveId
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
 
-        bondCurrency.safeTransferFrom(msg.sender, address(this), _bondAmount);
-        bondCurrency.safeApprove(address(oo), _bondAmount);
+        // If the bond amount is 0, set it to the oracle's minimum
+        _bondAmount = _bondAmount == 0 ? oo.getMinimumBond(bondCurrency) : _bondAmount;
+        // Handle bond payment
+        ERC20(bondCurrency).safeTransferFrom(msg.sender, address(this), _bondAmount);
+        ERC20(bondCurrency).safeApprove(address(oo), _bondAmount);
 
         assertionId = oo.assertTruth(
             abi.encodePacked(
@@ -84,7 +88,9 @@ abstract contract UmaMerkleOracle is Ownable2Step {
                 AncillaryData.toUtf8Bytes(_incentiveId),
                 " originating from entrypoint: 0x",
                 AncillaryData.toUtf8BytesAddress(_entrypoint),
-                " and asserter: 0x",
+                " meant for Action Verifier: 0x",
+                AncillaryData.toUtf8BytesAddress(actionVerifier),
+                ". Merkle Root asserted by: 0x",
                 AncillaryData.toUtf8BytesAddress(msg.sender),
                 " at timestamp: ",
                 AncillaryData.toUtf8BytesUint(block.timestamp),
@@ -96,7 +102,7 @@ abstract contract UmaMerkleOracle is Ownable2Step {
             address(this), // This contract implements assertionResolvedCallback and assertionDisputedCallback
             address(0), // No sovereign security.
             assertionLiveness,
-            IERC20(address(bondCurrency)),
+            IERC20(bondCurrency),
             _bondAmount,
             defaultIdentifier,
             bytes32(0) // No domain.
