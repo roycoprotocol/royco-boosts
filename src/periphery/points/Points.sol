@@ -28,7 +28,7 @@ contract Points is Ownable2Step {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
     event Award(address indexed to, uint256 indexed amount, address indexed awardedBy);
-    event AllowedIPAdded(address indexed ip);
+    event AllowedIPsAdded(address[] ip);
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -49,23 +49,24 @@ contract Points is Ownable2Step {
                               POINTS AUTH
     //////////////////////////////////////////////////////////////*/
 
-    /// @param ip The incentive provider address to allow to mint points on IncentiveLocker
-    function addAllowedIPs(address ip) external onlyOwner {
-        allowedIPs[ip] = true;
-
-        emit AllowedIPAdded(ip);
+    /// @param _ips The incentive provider addresses to allow to mint points through the IncentiveLocker
+    function addAllowedIPs(address[] calldata _ips) external onlyOwner {
+        for (uint256 i = 0; i < _ips.length; ++i) {
+            allowedIPs[_ips[i]] = true;
+        }
+        emit AllowedIPsAdded(_ips);
     }
 
     error OnlyIncentiveLocker();
     error NotAllowedIP();
 
-    /// @dev only the IncentiveLocker can call this function
-    /// @param ip The address to check if allowed
-    modifier onlyIncentiveLockerAllowedIP(address ip) {
+    /// @dev Only the IncentiveLocker can call this function
+    /// @param _ip The address of the IP to check against the whitelist
+    modifier onlyIncentiveLockerAllowedIP(address _ip) {
         if (!pointsFactory.isIncentiveLocker(msg.sender)) {
             revert OnlyIncentiveLocker();
         }
-        if (!allowedIPs[ip]) {
+        if (!allowedIPs[_ip]) {
             revert NotAllowedIP();
         }
         _;
@@ -75,10 +76,10 @@ contract Points is Ownable2Step {
                                  POINTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @param to The address to mint points to
-    /// @param amount  The amount of points to award to the `to` address
-    /// @param ip The incentive provider attempting to mint the points
-    function award(address to, uint256 amount, address ip) external onlyIncentiveLockerAllowedIP(ip) {
-        emit Award(to, amount, ip);
+    /// @param _to The address to mint points to
+    /// @param _amount  The amount of points to award to the `to` address
+    /// @param _ip The incentive provider attempting to mint the points
+    function award(address _to, uint256 _amount, address _ip) external onlyIncentiveLockerAllowedIP(_ip) {
+        emit Award(_to, _amount, _ip);
     }
 }
