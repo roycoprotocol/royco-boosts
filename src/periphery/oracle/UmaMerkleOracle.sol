@@ -93,6 +93,9 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
      */
     event AssertionLivenessUpdated(uint64 newAssertionLiveness);
 
+    /// @notice Error thrown when an assertion is being made for another ActionVerifier through this contract.
+    error MismatchedActionVerifier();
+
     /// @notice Error thrown when an unauthorized address attempts to assert a Merkle root.
     error UnauthorizedAsserter();
 
@@ -169,6 +172,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
+        require(actionVerifier == address(this), MismatchedActionVerifier());
 
         // If no bond amount is provided, use the minimum bond defined by the OO.
         _bondAmount = _bondAmount == 0 ? oo.getMinimumBond(bondCurrency) : _bondAmount;
