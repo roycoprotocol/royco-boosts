@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {IActionVerifier} from "../../interfaces/IActionVerifier.sol";
+import {UmaMerkleOracle} from "../oracle/UmaMerkleOracle.sol";
 import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
-import {SignatureChecker} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/SignatureChecker.sol";
 
 interface IUniswapV3Pool {
     function token0() external view returns (address);
@@ -15,7 +15,7 @@ interface IUniswapV3Factory {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
 }
 
-contract UniswapLpActionVerifier is IActionVerifier {
+contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
     struct MarketParams {
         address uniV3Pool;
     }
@@ -31,29 +31,29 @@ contract UniswapLpActionVerifier is IActionVerifier {
     error InvalidSignature();
 
     address public immutable UNISWAP_V3_FACTORY;
-    address public immutable LIT_NETWORK_ADDRESS;
 
     mapping(bytes32 => bytes32) offerHashToMerkleRoot;
     mapping(bytes32 => mapping(bytes32 => bool)) offerHashToMerkleLeafToClaimed;
 
-    constructor(address _uniV3Factory, address _litNetworkAddress) {
+    constructor(
+        address _owner,
+        address _optimisticOracleV3,
+        address _incentiveLocker,
+        address _delegatedAsserter,
+        address _bondCurrency,
+        uint64 _assertionLiveness,
+        address _uniV3Factory
+    )
+        UmaMerkleOracle(
+            _owner,
+            _optimisticOracleV3,
+            _incentiveLocker,
+            _delegatedAsserter,
+            _bondCurrency,
+            _assertionLiveness
+        )
+    {
         UNISWAP_V3_FACTORY = _uniV3Factory;
-        LIT_NETWORK_ADDRESS = _litNetworkAddress;
-    }
-
-    /**
-     * @notice Posts a Merkle root for a given offer after verifying the signature against the LIT network's address.
-     * @param _offerHash The unique identifier (hash) of the offer.
-     * @param _merkleRoot The Merkle root corresponding to the offer.
-     * @param _signature The cryptographic signature proving the authenticity of the offer and Merkle root.
-     */
-    function postMerkleRoot(bytes32 _offerHash, bytes32 _merkleRoot, bytes calldata _signature) external {
-        bytes32 digest = keccak256(abi.encode(_offerHash, _merkleRoot));
-        bool validSignature = SignatureChecker.isValidSignatureNow(LIT_NETWORK_ADDRESS, digest, _signature);
-        require(validSignature, InvalidSignature());
-
-        offerHashToMerkleRoot[_offerHash] = _merkleRoot;
-        emit MerkleRootSet(_offerHash, _merkleRoot);
     }
 
     /**
@@ -112,4 +112,26 @@ contract UniswapLpActionVerifier is IActionVerifier {
         emit UserClaimed(_offerHash, leaf);
         return (true, claimParams.ratioOwed);
     }
+
+    /**
+     * @notice Internal hook called when an assertion is resolved as truthful.
+     * @dev    Must be implemented by a concrete contract to handle the resolution logic.
+     * @param _merkleRootAssertion The storage pointer to the truthfully resolved assertion.
+     */
+    function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal override {
+        // Load the offerHash/incentiveId and merkleRoot from storage
+        bytes32 offerHash = _merkleRootAssertion.incentiveId;
+        bytes32 merkleRoot = _merkleRootAssertion.merkleRoot;
+        // Set the merkle root for the offerHash once the oracle resolves it as true
+        offerHashToMerkleRoot[offerHash] = merkleRoot;
+        // Emit an event to flag that claims can be made now for the offer
+        emit MerkleRootSet(offerHash, merkleRoot);
+    }
+
+    /**
+     * @notice Internal hook called when an assertion is disputed.
+     * @dev    Must be implemented by a concrete contract to handle the dispute logic.
+     * @param _assertionId The assertionId in UMA.
+     */
+    function _processAssertionDispute(bytes32 _assertionId) internal override {}
 }

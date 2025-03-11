@@ -172,6 +172,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
+        // Ensure that this Action Verifier is responsible for incentive claims for this incentiveId.
         require(actionVerifier == address(this), MismatchedActionVerifier());
 
         // If no bond amount is provided, use the minimum bond defined by the OO.
