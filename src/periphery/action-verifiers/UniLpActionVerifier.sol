@@ -97,7 +97,7 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _marketParams Encoded bytes of `MarketParams` defining the targeted Uniswap V3 pool.
      * @return validMarketCreation True if the Uniswap V3 pool is deployed under the official factory.
      */
-    function processMarketCreation(bytes32, bytes memory _marketParams)
+    function processIAMCreation(bytes32, bytes memory _marketParams)
         external
         view
         override

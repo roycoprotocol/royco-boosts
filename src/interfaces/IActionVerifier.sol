@@ -10,7 +10,7 @@ interface IActionVerifier {
      * @param _marketParams Encoded parameters required for market creation.
      * @return validMarketCreation Returns true if the market creation is valid.
      */
-    function processMarketCreation(bytes32 _marketHash, bytes memory _marketParams)
+    function processIAMCreation(bytes32 _marketHash, bytes memory _marketParams)
         external
         returns (bool validMarketCreation);
 

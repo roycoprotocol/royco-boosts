@@ -132,7 +132,7 @@ contract MultiplierMarketHub {
         marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _marketParams, _frontendFee));
 
         // Verify market parameters using the action verifier.
-        bool valid = IActionVerifier(_actionVerifier).processMarketCreation(marketHash, _marketParams);
+        bool valid = IActionVerifier(_actionVerifier).processIAMCreation(marketHash, _marketParams);
         require(valid, InvalidMarketCreation());
 
         // Store the market details.
