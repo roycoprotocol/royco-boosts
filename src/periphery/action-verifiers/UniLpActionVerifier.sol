@@ -6,45 +6,6 @@ import {UmaMerkleOracle} from "../oracle/UmaMerkleOracle.sol";
 import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
 /**
- * @title IUniswapV3Pool
- * @notice Minimal interface for a Uniswap V3 Pool used to retrieve token addresses and fee tier.
- */
-interface IUniswapV3Pool {
-    /**
-     * @notice Retrieves the address of token0 in the pool.
-     * @return The address of token0.
-     */
-    function token0() external view returns (address);
-
-    /**
-     * @notice Retrieves the address of token1 in the pool.
-     * @return The address of token1.
-     */
-    function token1() external view returns (address);
-
-    /**
-     * @notice Retrieves the fee tier of the pool.
-     * @return The fee tier (in basis points).
-     */
-    function fee() external view returns (uint24);
-}
-
-/**
- * @title IUniswapV3Factory
- * @notice Minimal interface for a Uniswap V3 Factory used to verify if a given pool is official.
- */
-interface IUniswapV3Factory {
-    /**
-     * @notice Fetches the deployed Uniswap V3 Pool for the given token pair and fee tier.
-     * @param tokenA The address of tokenA.
-     * @param tokenB The address of tokenB.
-     * @param fee The fee tier (in basis points).
-     * @return pool The address of the corresponding pool if it exists, or the zero address otherwise.
-     */
-    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
-}
-
-/**
  * @title UniswapLpActionVerifier
  * @notice This contract extends UmaMerkleOracle to verify and store Merkle roots related to Uniswap LP claims.
  *         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
@@ -70,17 +31,17 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
 
     /**
      * @notice Emitted when a Merkle root is set (resolved) for an offer.
-     * @param offerHash The identifier of the offer in the Incentive Locker (incentiveId).
-     * @param merkleRoot The verified Merkle root for the given offerHash.
+     * @param incentiveId The identifier of the offer in the Incentive Locker (incentiveId).
+     * @param merkleRoot The verified Merkle root for the given incentiveId.
      */
-    event MerkleRootSet(bytes32 indexed offerHash, bytes32 merkleRoot);
+    event MerkleRootSet(bytes32 indexed incentiveId, bytes32 merkleRoot);
 
     /**
      * @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
-     * @param offerHash The identifier of the offer in the Incentive Locker (incentiveId).
+     * @param incentiveId The identifier of the offer in the Incentive Locker (incentiveId).
      * @param leaf The computed Merkle leaf (address and ratio) claimed by the user.
      */
-    event UserClaimed(bytes32 indexed offerHash, bytes32 indexed leaf);
+    event UserClaimed(bytes32 indexed incentiveId, bytes32 indexed leaf);
 
     /// @notice Error thrown if the signature is invalid (not currently used in this contract).
     error InvalidSignature();
@@ -91,14 +52,14 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
     address public immutable UNISWAP_V3_FACTORY;
 
     /**
-     * @notice Maps an offerHash to its Merkle root. A zero value indicates no root has been set.
+     * @notice Maps an incentiveId to its Merkle root. A zero value indicates no root has been set.
      */
-    mapping(bytes32 => bytes32) public offerHashToMerkleRoot;
+    mapping(bytes32 => bytes32) public incentiveIdToMerkleRoot;
 
     /**
-     * @notice Tracks which leaves have already been claimed for a given offerHash.
+     * @notice Tracks which leaves have already been claimed for a given incentiveId.
      */
-    mapping(bytes32 => mapping(bytes32 => bool)) public offerHashToMerkleLeafToClaimed;
+    mapping(bytes32 => mapping(bytes32 => bool)) public incentiveIdToMerkleLeafToClaimed;
 
     /**
      * @notice Constructs the UniswapLpActionVerifier.
@@ -159,12 +120,12 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
     /**
      * @notice Verifies a user's claim against the stored Merkle root for a given offer.
      * @param _ap The address of the Action Provider (user) making the claim.
-     * @param _offerHash The offer identifier in the IncentiveLocker (often referred to as incentiveId).
+     * @param _incentiveId The offer identifier in the IncentiveLocker (often referred to as incentiveId).
      * @param _claimParams Encoded bytes of `ClaimParams` containing the user's ratio and Merkle proof.
      * @return validClaim True if the claim is proven valid by the Merkle root.
      * @return ratioOwed The ratio of rewards owed to the user if the claim is valid.
      */
-    function verifyClaim(address _ap, bytes32 _offerHash, bytes memory _claimParams)
+    function verifyClaim(address _ap, bytes32 _incentiveId, bytes memory _claimParams)
         external
         override
         returns (bool validClaim, uint64 ratioOwed)
@@ -172,21 +133,21 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
         ClaimParams memory claimParams = abi.decode(_claimParams, (ClaimParams));
 
-        // Fetch the current Merkle root associated with this offerHash.
-        bytes32 merkleRoot = offerHashToMerkleRoot[_offerHash];
+        // Fetch the current Merkle root associated with this incentiveId.
+        bytes32 merkleRoot = incentiveIdToMerkleRoot[_incentiveId];
         if (merkleRoot == bytes32(0)) return (false, 0);
 
         // Compute the leaf from the user's address and ratio, then check if already claimed.
         bytes32 leaf = keccak256(abi.encode(_ap, claimParams.ratioOwed));
-        if (offerHashToMerkleLeafToClaimed[_offerHash][leaf]) return (false, 0);
+        if (incentiveIdToMerkleLeafToClaimed[_incentiveId][leaf]) return (false, 0);
 
         // Verify the proof against the stored Merkle root.
         validClaim = MerkleProof.verify(claimParams.merkleProof, merkleRoot, leaf);
         if (!validClaim) return (false, 0);
 
         // Mark the claim as used and emit an event.
-        offerHashToMerkleLeafToClaimed[_offerHash][leaf] = true;
-        emit UserClaimed(_offerHash, leaf);
+        incentiveIdToMerkleLeafToClaimed[_incentiveId][leaf] = true;
+        emit UserClaimed(_incentiveId, leaf);
 
         // Return the ratio of rewards owed if valid.
         return (true, claimParams.ratioOwed);
@@ -198,15 +159,15 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
      */
     function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal override {
-        // Load the offerHash/incentiveId and merkleRoot from storage
-        bytes32 offerHash = _merkleRootAssertion.incentiveId;
+        // Load the incentiveId/incentiveId and merkleRoot from storage
+        bytes32 incentiveId = _merkleRootAssertion.incentiveId;
         bytes32 merkleRoot = _merkleRootAssertion.merkleRoot;
 
-        // Store the merkle root for the corresponding offerHash.
-        offerHashToMerkleRoot[offerHash] = merkleRoot;
+        // Store the merkle root for the corresponding incentiveId.
+        incentiveIdToMerkleRoot[incentiveId] = merkleRoot;
 
         // Emit an event indicating that users can now claim based on this root.
-        emit MerkleRootSet(offerHash, merkleRoot);
+        emit MerkleRootSet(incentiveId, merkleRoot);
     }
 
     /**
@@ -215,4 +176,43 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _assertionId The ID of the disputed assertion in UMA.
      */
     function _processAssertionDispute(bytes32 _assertionId) internal override {}
+}
+
+/**
+ * @title IUniswapV3Pool
+ * @notice Minimal interface for a Uniswap V3 Pool used to retrieve token addresses and fee tier.
+ */
+interface IUniswapV3Pool {
+    /**
+     * @notice Retrieves the address of token0 in the pool.
+     * @return The address of token0.
+     */
+    function token0() external view returns (address);
+
+    /**
+     * @notice Retrieves the address of token1 in the pool.
+     * @return The address of token1.
+     */
+    function token1() external view returns (address);
+
+    /**
+     * @notice Retrieves the fee tier of the pool.
+     * @return The fee tier (in basis points).
+     */
+    function fee() external view returns (uint24);
+}
+
+/**
+ * @title IUniswapV3Factory
+ * @notice Minimal interface for a Uniswap V3 Factory used to verify if a given pool is official.
+ */
+interface IUniswapV3Factory {
+    /**
+     * @notice Fetches the deployed Uniswap V3 Pool for the given token pair and fee tier.
+     * @param tokenA The address of tokenA.
+     * @param tokenB The address of tokenB.
+     * @param fee The fee tier (in basis points).
+     * @return pool The address of the corresponding pool if it exists, or the zero address otherwise.
+     */
+    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
 }
