@@ -42,6 +42,11 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     error UnauthorizedAsserter();
     error UnauthorizedCallbackInvoker();
 
+    modifier onlyOptimisticOracle() {
+        require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
+        _;
+    }
+
     constructor(
         address _owner,
         address _optimisticOracleV3,
@@ -77,7 +82,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
         // Make sure the asserter is either the delegated asserter or the IP for this incentiveId
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
 
-        // If the bond amount is 0, set it to the oracle's minimum
+        // If the bond amount is 0, set it to the oracle's minimum bond
         _bondAmount = _bondAmount == 0 ? oo.getMinimumBond(bondCurrency) : _bondAmount;
         // Handle bond payment
         ERC20(bondCurrency).safeTransferFrom(msg.sender, address(this), _bondAmount);
@@ -118,27 +123,26 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     }
 
     // OptimisticOracleV3 resolve callback.
-    function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) external {
-        require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
+    function assertionResolvedCallback(bytes32 _assertionId, bool _assertedTruthfully) external onlyOptimisticOracle {
         // If the assertion was true, then the data assertion is resolved.
-        if (assertedTruthfully) {
-            assertionIdToMerkleRootAssertion[assertionId].resolved = true;
-            MerkleRootAssertion memory merkleRootAssertion = assertionIdToMerkleRootAssertion[assertionId];
-            emit MerkleRootAssertionResolved(
-                merkleRootAssertion.incentiveId,
-                merkleRootAssertion.merkleRoot,
-                merkleRootAssertion.asserter,
-                assertionId
-            );
-            // Else delete the data assertion if it was false to save gas.
+        if (_assertedTruthfully) {
+            // Mark the assertion as resolved
+            assertionIdToMerkleRootAssertion[_assertionId].resolved = true;
+            // Call the internal helper with the AV's logic
+            _processAssertionResolution(_assertionId, _assertedTruthfully);
+            // Else delete the assertion to save gas
         } else {
-            delete assertionIdToMerkleRootAssertion[assertionId];
+            delete assertionIdToMerkleRootAssertion[_assertionId];
         }
     }
 
     // If assertion is disputed, do nothing and wait for resolution.
     // This OptimisticOracleV3 callback function needs to be defined so the OOv3 doesn't revert when it tries to call it.
-    function assertionDisputedCallback(bytes32 assertionId) external {
-        require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
+    function assertionDisputedCallback(bytes32 _assertionId) external onlyOptimisticOracle {
+        // Call the internal helper with the AV's logic
+        _processAssertionDispute(_assertionId);
     }
+
+    function _processAssertionResolution(bytes32 _assertionId, bool _assertedTruthfully) internal virtual;
+    function _processAssertionDispute(bytes32 _assertionId) internal virtual;
 }
