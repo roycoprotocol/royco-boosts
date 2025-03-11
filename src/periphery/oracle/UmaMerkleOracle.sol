@@ -3,12 +3,14 @@ pragma solidity ^0.8.0;
 
 import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {OptimisticOracleV3Interface, IERC20} from "../../interfaces/OptimisticOracleV3Interface.sol";
+import {OptimisticOracleV3CallbackRecipientInterface} from
+    "../../interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
 import {IncentiveLocker} from "../../core/IncentiveLocker.sol";
 import {ERC20} from "../../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {AncillaryData} from "../../libraries/AncillaryData.sol";
 
-abstract contract UmaMerkleOracle is Ownable2Step {
+abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
     using SafeTransferLib for ERC20;
 
     OptimisticOracleV3Interface public immutable oo;
@@ -38,6 +40,7 @@ abstract contract UmaMerkleOracle is Ownable2Step {
     );
 
     error UnauthorizedAsserter();
+    error UnauthorizedCallbackInvoker();
 
     constructor(
         address _owner,
@@ -59,13 +62,13 @@ abstract contract UmaMerkleOracle is Ownable2Step {
     /// @param assertionId The assertionId for the assertion to get the data for
     /// @return resolved Boolean indicating whether the assertion has been resolved
     /// @return merkleRoot The merkle root for the specified assertionId. bytes32(0) if the assertion is unresolved
-    function getMerkleRoot(bytes32 assertionId) public view returns (bool, bytes32) {
+    function getMerkleRoot(bytes32 assertionId) external view returns (bool, bytes32) {
         if (!assertionIdToMerkleRootAssertion[assertionId].resolved) return (false, 0);
         return (true, assertionIdToMerkleRootAssertion[assertionId].merkleRoot);
     }
 
     function assertMerkleRoot(address _entrypoint, bytes32 _incentiveId, bytes32 _merkleRoot, uint256 _bondAmount)
-        public
+        external
         returns (bytes32 assertionId)
     {
         // Get the IP that placed the incentives for this incentive ID
@@ -112,5 +115,30 @@ abstract contract UmaMerkleOracle is Ownable2Step {
             MerkleRootAssertion(_incentiveId, _merkleRoot, msg.sender, false);
 
         emit MerkleRootAsserted(_incentiveId, _merkleRoot, msg.sender, assertionId);
+    }
+
+    // OptimisticOracleV3 resolve callback.
+    function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) external {
+        require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
+        // If the assertion was true, then the data assertion is resolved.
+        if (assertedTruthfully) {
+            assertionIdToMerkleRootAssertion[assertionId].resolved = true;
+            MerkleRootAssertion memory merkleRootAssertion = assertionIdToMerkleRootAssertion[assertionId];
+            emit MerkleRootAssertionResolved(
+                merkleRootAssertion.incentiveId,
+                merkleRootAssertion.merkleRoot,
+                merkleRootAssertion.asserter,
+                assertionId
+            );
+            // Else delete the data assertion if it was false to save gas.
+        } else {
+            delete assertionIdToMerkleRootAssertion[assertionId];
+        }
+    }
+
+    // If assertion is disputed, do nothing and wait for resolution.
+    // This OptimisticOracleV3 callback function needs to be defined so the OOv3 doesn't revert when it tries to call it.
+    function assertionDisputedCallback(bytes32 assertionId) external {
+        require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
     }
 }
