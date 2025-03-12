@@ -31,17 +31,17 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
 
     /**
      * @notice Emitted when a Merkle root is set (resolved) for an offer.
-     * @param incentiveId The identifier of the offer in the Incentive Locker (incentiveId).
-     * @param merkleRoot The verified Merkle root for the given incentiveId.
+     * @param incentivizedActionId The identifier of the offer in the Incentive Locker (incentivizedActionId).
+     * @param merkleRoot The verified Merkle root for the given incentivizedActionId.
      */
-    event MerkleRootSet(bytes32 indexed incentiveId, bytes32 merkleRoot);
+    event MerkleRootSet(bytes32 indexed incentivizedActionId, bytes32 merkleRoot);
 
     /**
      * @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
-     * @param incentiveId The identifier of the offer in the Incentive Locker (incentiveId).
+     * @param incentivizedActionId The identifier of the offer in the Incentive Locker (incentivizedActionId).
      * @param leaf The computed Merkle leaf (address and ratio) claimed by the user.
      */
-    event UserClaimed(bytes32 indexed incentiveId, bytes32 indexed leaf);
+    event UserClaimed(bytes32 indexed incentivizedActionId, bytes32 indexed leaf);
 
     /// @notice Error thrown if the signature is invalid (not currently used in this contract).
     error InvalidSignature();
@@ -52,14 +52,14 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
     address public immutable UNISWAP_V3_FACTORY;
 
     /**
-     * @notice Maps an incentiveId to its Merkle root. A zero value indicates no root has been set.
+     * @notice Maps an incentivizedActionId to its Merkle root. A zero value indicates no root has been set.
      */
-    mapping(bytes32 => bytes32) public incentiveIdToMerkleRoot;
+    mapping(bytes32 => bytes32) public incentivizedActionIdToMerkleRoot;
 
     /**
-     * @notice Tracks which leaves have already been claimed for a given incentiveId.
+     * @notice Tracks which leaves have already been claimed for a given incentivizedActionId.
      */
-    mapping(bytes32 => mapping(bytes32 => bool)) public incentiveIdToMerkleLeafToClaimed;
+    mapping(bytes32 => mapping(bytes32 => bool)) public incentivizedActionIdToMerkleLeafToClaimed;
 
     /**
      * @notice Constructs the UniswapLpActionVerifier.
@@ -94,17 +94,17 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
 
     /**
      * @notice Verifies the parameters for creating a new market, ensuring the Uniswap V3 pool is valid.
-     * @param _marketParams Encoded bytes of `MarketParams` defining the targeted Uniswap V3 pool.
-     * @return validMarketCreation True if the Uniswap V3 pool is deployed under the official factory.
+     * @param _actionParams Encoded bytes of `MarketParams` defining the targeted Uniswap V3 pool.
+     * @return valid True if the Uniswap V3 pool is deployed under the official factory.
      */
-    function processIAMCreation(bytes32, bytes memory _marketParams)
+    function verifyIncentivizedAction(bytes32, bytes memory _actionParams)
         external
         view
         override
-        returns (bool validMarketCreation)
+        returns (bool valid)
     {
         // Decode the parameters to retrieve the Uniswap V3 Pool address.
-        MarketParams memory marketParams = abi.decode(_marketParams, (MarketParams));
+        MarketParams memory marketParams = abi.decode(_actionParams, (MarketParams));
         IUniswapV3Pool pool = IUniswapV3Pool(marketParams.uniV3Pool);
 
         // Retrieve pool metadata (token0, token1, fee).
@@ -114,40 +114,40 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
 
         // Validate that the pool address is indeed deployed by the official Uniswap V3 factory.
         address actualPool = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(token0, token1, fee);
-        validMarketCreation = (actualPool == address(pool));
+        valid = (actualPool == address(pool));
     }
 
     /**
      * @notice Verifies a user's claim against the stored Merkle root for a given offer.
      * @param _ap The address of the Action Provider (user) making the claim.
-     * @param _incentiveId The offer identifier in the IncentiveLocker (often referred to as incentiveId).
+     * @param _incentivizedActionId The offer identifier in the IncentiveLocker (often referred to as incentivizedActionId).
      * @param _claimParams Encoded bytes of `ClaimParams` containing the user's ratio and Merkle proof.
-     * @return validClaim True if the claim is proven valid by the Merkle root.
+     * @return valid True if the claim is proven valid by the Merkle root.
      * @return ratioOwed The ratio of rewards owed to the user if the claim is valid.
      */
-    function verifyClaim(address _ap, bytes32 _incentiveId, bytes memory _claimParams)
+    function verifyClaim(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
         external
         override
-        returns (bool validClaim, uint64 ratioOwed)
+        returns (bool valid, uint64 ratioOwed)
     {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
         ClaimParams memory claimParams = abi.decode(_claimParams, (ClaimParams));
 
-        // Fetch the current Merkle root associated with this incentiveId.
-        bytes32 merkleRoot = incentiveIdToMerkleRoot[_incentiveId];
+        // Fetch the current Merkle root associated with this incentivizedActionId.
+        bytes32 merkleRoot = incentivizedActionIdToMerkleRoot[_incentivizedActionId];
         if (merkleRoot == bytes32(0)) return (false, 0);
 
         // Compute the leaf from the user's address and ratio, then check if already claimed.
         bytes32 leaf = keccak256(abi.encode(_ap, claimParams.ratioOwed));
-        if (incentiveIdToMerkleLeafToClaimed[_incentiveId][leaf]) return (false, 0);
+        if (incentivizedActionIdToMerkleLeafToClaimed[_incentivizedActionId][leaf]) return (false, 0);
 
         // Verify the proof against the stored Merkle root.
-        validClaim = MerkleProof.verify(claimParams.merkleProof, merkleRoot, leaf);
-        if (!validClaim) return (false, 0);
+        valid = MerkleProof.verify(claimParams.merkleProof, merkleRoot, leaf);
+        if (!valid) return (false, 0);
 
         // Mark the claim as used and emit an event.
-        incentiveIdToMerkleLeafToClaimed[_incentiveId][leaf] = true;
-        emit UserClaimed(_incentiveId, leaf);
+        incentivizedActionIdToMerkleLeafToClaimed[_incentivizedActionId][leaf] = true;
+        emit UserClaimed(_incentivizedActionId, leaf);
 
         // Return the ratio of rewards owed if valid.
         return (true, claimParams.ratioOwed);
@@ -159,15 +159,15 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
      */
     function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal override {
-        // Load the incentiveId/incentiveId and merkleRoot from storage
-        bytes32 incentiveId = _merkleRootAssertion.incentiveId;
+        // Load the incentivizedActionId/incentivizedActionId and merkleRoot from storage
+        bytes32 incentivizedActionId = _merkleRootAssertion.incentivizedActionId;
         bytes32 merkleRoot = _merkleRootAssertion.merkleRoot;
 
-        // Store the merkle root for the corresponding incentiveId.
-        incentiveIdToMerkleRoot[incentiveId] = merkleRoot;
+        // Store the merkle root for the corresponding incentivizedActionId.
+        incentivizedActionIdToMerkleRoot[incentivizedActionId] = merkleRoot;
 
         // Emit an event indicating that users can now claim based on this root.
-        emit MerkleRootSet(incentiveId, merkleRoot);
+        emit MerkleRootSet(incentivizedActionId, merkleRoot);
     }
 
     /**

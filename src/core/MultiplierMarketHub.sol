@@ -87,7 +87,7 @@ contract MultiplierMarketHub {
         bytes32 indexed apOfferHash, bytes32 indexed ipOfferHash, address indexed ap, uint96 multiplier
     );
 
-    error InvalidMarketCreation();
+    error Invalid();
     error OnlyTheIpCanFill();
     error IpOfferExpired();
 
@@ -121,28 +121,28 @@ contract MultiplierMarketHub {
 
     /// @notice Creates an Incentivized Action Market.
     /// @param _actionVerifier Address of the action verifier.
-    /// @param _marketParams Encoded market parameters.
+    /// @param _actionParams Encoded market parameters.
     /// @param _frontendFee Front-end fee.
     /// @return marketHash Unique market identifier.
-    function createIAM(address _actionVerifier, bytes calldata _marketParams, uint64 _frontendFee)
+    function createIAM(address _actionVerifier, bytes calldata _actionParams, uint64 _frontendFee)
         external
         returns (bytes32 marketHash)
     {
         // Calculate the market hash using an incremental counter and provided parameters.
-        marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _marketParams, _frontendFee));
+        marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _actionParams, _frontendFee));
 
         // Verify market parameters using the action verifier.
-        bool valid = IActionVerifier(_actionVerifier).processIAMCreation(marketHash, _marketParams);
-        require(valid, InvalidMarketCreation());
+        bool valid = IActionVerifier(_actionVerifier).verifyIncentivizedAction(marketHash, _actionParams);
+        require(valid, Invalid());
 
         // Store the market details.
         IAM storage market = marketHashToIAM[marketHash];
         market.frontendFee = _frontendFee;
         market.actionVerifier = _actionVerifier;
-        market.marketParams = _marketParams;
+        market.marketParams = _actionParams;
 
         // Emit the market creation event.
-        emit MarketCreated(marketHash, _actionVerifier, _marketParams, _frontendFee);
+        emit MarketCreated(marketHash, _actionVerifier, _actionParams, _frontendFee);
     }
 
     /// @notice Creates an IP offer in a market.
@@ -177,7 +177,7 @@ contract MultiplierMarketHub {
         ipOffer.endBlock = _endBlock;
 
         // Add the incentive rewards for this offer.
-        IncentiveLocker(INCENTIVE_LOCKER).addIncentives(
+        IncentiveLocker(INCENTIVE_LOCKER).addIncentivizedAction(
             msg.sender, market.actionVerifier, market.frontendFee, _incentivesOffered, _incentiveAmountsPaid
         );
 

@@ -18,23 +18,24 @@ contract IncentiveLocker is Ownable2Step {
     /// @notice Address of the PointsFactory contract.
     address public immutable POINTS_FACTORY;
 
-    /// @notice Stores details of an incentive offer.
+    /// @notice Incentivized Action State - The state of an incentivized action on Royco
     /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
-    struct IncentiveInfo {
-        uint64 ratioOwed;
-        // uint32 startTimestamp;
-        // uint32 endTimestamp;
+    struct IAS {
+        // Pack the struct for gas op
         address ip;
+        uint32 startTimestamp;
+        uint64 protocolFee;
+        // Pack the struct for gas op
         address actionVerifier;
-        // bytes actionParams;
+        uint32 endTimestamp;
+        uint64 frontendFee;
+        bytes actionParams;
         address[] incentivesOffered;
-        mapping(address => uint256) incentiveAmountsOffered; // amounts to be allocated to APs (per incentive)
-        mapping(address => uint256) incentiveToProtocolFeeAmount; // amounts to be allocated to protocolFeeClaimant (per incentive)
-        mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
+        mapping(address => uint256) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
     }
 
     /// @notice Mapping from incentive ID to incentive information.
-    mapping(bytes32 => IncentiveInfo) public incentiveIdToIncentiveInfo;
+    mapping(bytes32 => IAS) public incentivizedActionIdToIAS;
 
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address => mapping(address => uint256)) public feeClaimantToTokenToAmount;
@@ -49,31 +50,32 @@ contract IncentiveLocker is Ownable2Step {
     uint64 public minimumFrontendFee;
 
     /// @notice The number of incentive IDs the locker has minted so far
-    uint256 public numIncentiveIds;
+    uint256 public numIncentivizedActionIds;
 
     /// @notice Emitted when incentives are added to the locker.
-    /// @param incentiveID Unique identifier for the incentive.
+    /// @param incentivizedActionId Unique identifier for the incentive.
     /// @param actionVerifier The address verifying the incentive conditions.
     /// @param ip The address of the incentive provider.
     /// @param incentivesOffered Array of incentive token addresses.
     /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
-    /// @param protocolFeesToBePaid Array of protocol fee amounts allocated per incentive.
-    /// @param frontendFeesToBePaid Array of frontend fee amounts allocated per incentive.
-    event IncentivesAdded(
-        bytes32 indexed incentiveID,
+    event IncentivizedActionAdded(
+        bytes32 indexed incentivizedActionId,
+        address indexed ip,
         address indexed actionVerifier,
-        address ip,
+        bytes actionParams,
+        uint32 startTimestamp,
+        uint32 endTimestamp,
+        uint64 protocolFee,
+        uint64 frontendFee,
         address[] incentivesOffered,
-        uint256[] incentiveAmountsOffered,
-        uint256[] protocolFeesToBePaid,
-        uint256[] frontendFeesToBePaid
+        uint256[] incentiveAmountsOffered
     );
 
     event IncentivesClaimed(
-        bytes32 indexed incentiveID,
+        bytes32 indexed incentivizedActionId,
         address indexed ap,
         address actionVerifier,
-        uint256[] incentiveAmountsPaid,
+        uint256[] incentiveAmountsOffered,
         uint256[] protocolFeesPaid,
         uint256[] frontendFeesPaid
     );
@@ -88,7 +90,7 @@ contract IncentiveLocker is Ownable2Step {
     error TokenDoesNotExist();
     error InvalidPointsProgram();
     error OfferCannotContainDuplicateIncentives();
-    error InvalidClaim();
+    error Invalid();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -108,152 +110,104 @@ contract IncentiveLocker is Ownable2Step {
     /// @notice Adds incentives to the incentive locker and returns it's identifier.
     /// @param _ip Address of the incentive provider.
     /// @param _actionVerifier Address of the action verifier.
+    /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
     /// @param _frontendFee Frontend fee rate for the market.
+    /// @param _startTimestamp The timestamp to start distributing incentives.
+    /// @param _endTimestamp The timestamp to stop distributing incentives.
     /// @param _incentivesOffered Array of incentive token addresses.
-    /// @param _incentiveAmountsPaid Array of total amounts paid for each incentive (including fees).
-    function addIncentives(
+    /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
+    function addIncentivizedAction(
         address _ip,
         address _actionVerifier,
+        bytes memory _actionParams,
         uint64 _frontendFee,
+        uint32 _startTimestamp,
+        uint32 _endTimestamp,
         address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmountsPaid
-    ) external returns (bytes32 incentiveID) {
+        uint256[] memory _incentiveAmountsOffered
+    ) external returns (bytes32 incentivizedActionId) {
         uint256 numIncentives = _incentivesOffered.length;
         // Check that the frontend fee is valid
         require(_frontendFee > minimumFrontendFee && (protocolFee + _frontendFee) <= 1e18, InvalidFrontendFee());
         // Check that all incentives have a corresponding amount
-        require(numIncentives == _incentiveAmountsPaid.length, ArrayLengthMismatch());
+        require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
 
         // Pull the incentives from the IP
-        (
-            uint256[] memory incentiveAmountsOffered,
-            uint256[] memory protocolFeesToBePaid,
-            uint256[] memory frontendFeesToBePaid
-        ) = _pullIncentives(_ip, _incentivesOffered, _incentiveAmountsPaid, _frontendFee);
+        _pullIncentives(_ip, _incentivesOffered, _incentiveAmountsOffered);
 
-        incentiveID = keccak256(
-            abi.encode(++numIncentiveIds, _ip, _actionVerifier, _frontendFee, _incentivesOffered, _incentiveAmountsPaid)
+        // Compute a unique identifier for this incentivized action
+        incentivizedActionId = keccak256(
+            abi.encode(++numIncentivizedActionIds, _ip, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp)
         );
 
         // Store the incentive information in persistent storage
-        IncentiveInfo storage incentiveInfo = incentiveIdToIncentiveInfo[incentiveID];
-        incentiveInfo.ratioOwed = 1e18; // All incentives are still left to be payed to APs
-        incentiveInfo.ip = _ip;
-        incentiveInfo.actionVerifier = _actionVerifier;
-        incentiveInfo.incentivesOffered = _incentivesOffered;
+        IAS storage ias = incentivizedActionIdToIAS[incentivizedActionId];
+        ias.ip = _ip;
+        ias.startTimestamp = _startTimestamp;
+        ias.protocolFee = protocolFee;
+        ias.actionVerifier = _actionVerifier;
+        ias.endTimestamp = _endTimestamp;
+        ias.frontendFee = _frontendFee;
+        ias.actionParams = _actionParams;
+        ias.incentivesOffered = _incentivesOffered;
 
-        // Set incentives and fees in the incentiveInfo mapping
+        // Set incentives and fees in the ias mapping
         for (uint256 i = 0; i < numIncentives; ++i) {
-            address incentive = _incentivesOffered[i];
-            // Write to mapping
-            incentiveInfo.incentiveAmountsOffered[incentive] = incentiveAmountsOffered[i];
-            incentiveInfo.incentiveToProtocolFeeAmount[incentive] = protocolFeesToBePaid[i];
-            incentiveInfo.incentiveToFrontendFeeAmount[incentive] = frontendFeesToBePaid[i];
+            // Write the incentive amounts offered to the IAS mapping
+            ias.incentiveAmountsOffered[_incentivesOffered[i]] = _incentiveAmountsOffered[i];
         }
 
-        // Emit event for adding incentives
-        emit IncentivesAdded(
-            incentiveID,
-            _actionVerifier,
+        // Emit event for the addition of the incentivized action
+        emit IncentivizedActionAdded(
+            incentivizedActionId,
             _ip,
+            _actionVerifier,
+            _actionParams,
+            _startTimestamp,
+            _endTimestamp,
+            ias.protocolFee,
+            _frontendFee,
             _incentivesOffered,
-            incentiveAmountsOffered,
-            protocolFeesToBePaid,
-            frontendFeesToBePaid
+            _incentiveAmountsOffered
         );
     }
 
     /// @notice Claims incentives for given incentive IDs.
-    /// @param _incentiveIDs Array of incentive identifiers.
+    /// @param _incentivizedActionIds Array of incentive identifiers.
     /// @param _claimParams Array of claim parameters for each incentive.
     /// @param _frontendFeeRecipient Address to receive the frontend fee.
     function claimIncentives(
-        bytes32[] calldata _incentiveIDs,
+        bytes32[] calldata _incentivizedActionIds,
         bytes[] calldata _claimParams,
         address _frontendFeeRecipient
     ) external {
-        uint256 numClaims = _incentiveIDs.length;
+        uint256 numClaims = _incentivizedActionIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
         for (uint256 i = 0; i < numClaims; ++i) {
             // Retrieve the incentive information.
-            IncentiveInfo storage incentiveInfo = incentiveIdToIncentiveInfo[_incentiveIDs[i]];
+            IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionIds[i]];
 
             // Verify the claim via the action verifier.
-            (bool validClaim, uint64 ratioOwed) =
-                IActionVerifier(incentiveInfo.actionVerifier).verifyClaim(msg.sender, _incentiveIDs[i], _claimParams[i]);
-            require(validClaim, InvalidClaim());
-
-            // Deduct the claimed ratio to prevent commingling.
-            incentiveInfo.ratioOwed -= ratioOwed;
+            (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
+                IActionVerifier(ias.actionVerifier).verifyClaim(msg.sender, _incentivizedActionIds[i], _claimParams[i]);
+            require(valid, Invalid());
 
             // Process each incentive claim, calculating amounts and fees.
             (
-                uint256[] memory incentiveAmountsPaid,
+                uint256[] memory incentiveAmountsPaidToAP,
                 uint256[] memory protocolFeesPaid,
                 uint256[] memory frontendFeesPaid
-            ) = _processIncentiveClaim(incentiveInfo, ratioOwed, msg.sender, _frontendFeeRecipient);
+            ) = _processIncentiveClaim(ias, msg.sender, _frontendFeeRecipient, incentives, incentiveAmountsOwed);
 
             // Emit the incentives claimed event.
             emit IncentivesClaimed(
-                _incentiveIDs[i],
+                _incentivizedActionIds[i],
                 msg.sender,
-                incentiveInfo.actionVerifier,
-                incentiveAmountsPaid,
+                ias.actionVerifier,
+                incentiveAmountsPaidToAP,
                 protocolFeesPaid,
                 frontendFeesPaid
-            );
-        }
-    }
-
-    /// @notice Processes a single incentive claim for a given IncentiveInfo.
-    /// @dev Iterates over each offered incentive, computes net amounts and fee allocations based on the claim ratio,
-    ///      and pushes the calculated amounts to the claimer while accounting for fees.
-    /// @param incentiveInfo Storage reference to the incentive information.
-    /// @param ratioOwed The ratio of the total incentive to be claimed.
-    /// @param claimer The address claiming the incentives.
-    /// @param _frontendFeeRecipient The address that will receive the frontend fee.
-    /// @return incentiveAmountsPaid Array of net incentive amounts paid.
-    /// @return protocolFeesPaid Array of protocol fee amounts paid.
-    /// @return frontendFeesPaid Array of frontend fee amounts paid.
-    function _processIncentiveClaim(
-        IncentiveInfo storage incentiveInfo,
-        uint64 ratioOwed,
-        address claimer,
-        address _frontendFeeRecipient
-    )
-        internal
-        returns (
-            uint256[] memory incentiveAmountsPaid,
-            uint256[] memory protocolFeesPaid,
-            uint256[] memory frontendFeesPaid
-        )
-    {
-        uint256 numIncentives = incentiveInfo.incentivesOffered.length;
-        incentiveAmountsPaid = new uint256[](numIncentives);
-        protocolFeesPaid = new uint256[](numIncentives);
-        frontendFeesPaid = new uint256[](numIncentives);
-
-        for (uint256 i = 0; i < numIncentives; ++i) {
-            // Retrieve the incentive address.
-            address incentive = incentiveInfo.incentivesOffered[i];
-
-            // Calculate fee amounts based on the claim ratio.
-            protocolFeesPaid[i] = incentiveInfo.incentiveToProtocolFeeAmount[incentive].mulWadDown(ratioOwed);
-            frontendFeesPaid[i] = incentiveInfo.incentiveToFrontendFeeAmount[incentive].mulWadDown(ratioOwed);
-
-            // Calculate the net incentive amount to be paid.
-            incentiveAmountsPaid[i] = incentiveInfo.incentiveAmountsOffered[incentive].mulWadDown(ratioOwed);
-
-            // Push incentives to the claimer and account for fees.
-            _pushIncentivesAndAccountFees(
-                incentive,
-                claimer,
-                incentiveAmountsPaid[i],
-                protocolFeesPaid[i],
-                frontendFeesPaid[i],
-                incentiveInfo.ip,
-                _frontendFeeRecipient
             );
         }
     }
@@ -286,32 +240,13 @@ contract IncentiveLocker is Ownable2Step {
         minimumFrontendFee = _minFrontendFee;
     }
 
-    /// @notice Pulls incentives from the incentive provider and calculates fee breakdowns.
+    /// @notice Pulls incentives from the incentive provider.
     /// @param _ip Address of the incentive provider.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmounts Total amounts provided for each incentive (including fees).
-    /// @param _frontendFee Frontend fee rate.
-    /// @return incentiveAmountsOffered Net incentive amounts offered (after fee deduction).
-    /// @return protocolFeesToBePaid Protocol fee amounts for each incentive.
-    /// @return frontendFeesToBePaid Frontend fee amounts for each incentive.
-    function _pullIncentives(
-        address _ip,
-        address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmounts,
-        uint64 _frontendFee
-    )
+    function _pullIncentives(address _ip, address[] memory _incentivesOffered, uint256[] memory _incentiveAmounts)
         internal
-        returns (
-            uint256[] memory incentiveAmountsOffered,
-            uint256[] memory protocolFeesToBePaid,
-            uint256[] memory frontendFeesToBePaid
-        )
     {
-        // To keep track of incentives allocated to the AP and fees (per incentive)
-        incentiveAmountsOffered = new uint256[](_incentivesOffered.length);
-        protocolFeesToBePaid = new uint256[](_incentivesOffered.length);
-        frontendFeesToBePaid = new uint256[](_incentivesOffered.length);
-
         // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
         address lastIncentive;
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
@@ -323,22 +258,6 @@ contract IncentiveLocker is Ownable2Step {
                 revert OfferCannotContainDuplicateIncentives();
             }
             lastIncentive = incentive;
-
-            // Total amount IP is paying in this incentive including fees
-            uint256 amount = _incentiveAmounts[i];
-
-            // Calculate incentive and fee breakdown
-            uint256 incentiveAmount = amount.divWadDown(1e18 + protocolFee + _frontendFee);
-            uint256 protocolFeeAmount = incentiveAmount.mulWadDown(protocolFee);
-            uint256 frontendFeeAmount = incentiveAmount.mulWadDown(_frontendFee);
-
-            // Use a scoping block to avoid stack to deep errors
-            {
-                // Track incentive amounts and fees (per incentive)
-                incentiveAmountsOffered[i] = incentiveAmount;
-                protocolFeesToBePaid[i] = protocolFeeAmount;
-                frontendFeesToBePaid[i] = frontendFeeAmount;
-            }
 
             // Check if incentive is a points program
             if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
@@ -353,11 +272,72 @@ contract IncentiveLocker is Ownable2Step {
             } else {
                 // Prevent incentive deployment frontrunning
                 if (incentive.code.length == 0) revert TokenDoesNotExist();
-                // Transfer frontend fee + protocol fee + incentiveAmount of the incentive to RecipeMarketHub
-                ERC20(incentive).safeTransferFrom(
-                    _ip, address(this), incentiveAmount + protocolFeeAmount + frontendFeeAmount
-                );
+                // Transfer the total incentive amounts being paid to this contract
+                ERC20(incentive).safeTransferFrom(_ip, address(this), _incentiveAmounts[i]);
             }
+        }
+    }
+
+    /// @notice Processes a single incentive claim for a given IAS.
+    /// @dev Iterates over each offered incentive, computes net amounts and fee allocations based on the claim ratio,
+    ///      and pushes the calculated amounts to the _ap while accounting for fees.
+    /// @param _ias Storage reference to the incentive information.
+    /// @param _ap The address of the AP claiming the incentives.
+    /// @param _frontendFeeRecipient The address that will receive the frontend fee.
+    /// @param _incentives The incentive tokens to pay out to the AP.
+    /// @param _incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
+    /// @return incentiveAmountsPaid Array of net incentive amounts paid to the AP.
+    /// @return protocolFeesPaid Array of protocol fee amounts paid.
+    /// @return frontendFeesPaid Array of frontend fee amounts paid.
+    function _processIncentiveClaim(
+        IAS storage _ias,
+        address _ap,
+        address _frontendFeeRecipient,
+        address[] memory _incentives,
+        uint256[] memory _incentiveAmountsOwed
+    )
+        internal
+        returns (
+            uint256[] memory incentiveAmountsPaid,
+            uint256[] memory protocolFeesPaid,
+            uint256[] memory frontendFeesPaid
+        )
+    {
+        // Cache for gas op
+        uint256 numIncentives = _incentives.length;
+        address ip = _ias.ip;
+        // Check each incentive has a corrseponding amount owed
+        require(numIncentives == _incentiveAmountsOwed.length, ArrayLengthMismatch());
+        // Initialize array for event emission
+        incentiveAmountsPaid = new uint256[](numIncentives);
+        protocolFeesPaid = new uint256[](numIncentives);
+        frontendFeesPaid = new uint256[](numIncentives);
+
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Cache for gas op
+            address incentive = _incentives[i];
+            uint256 incentiveAmountOwed = _incentiveAmountsOwed[i];
+
+            // Account for spent incentives to prevent co-mingling of incentives
+            _ias.incentiveAmountsOffered[incentive] -= incentiveAmountOwed;
+
+            // Calculate fee amounts based on the claim ratio.
+            protocolFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ias.protocolFee);
+            frontendFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ias.frontendFee);
+
+            // Calculate the net incentive amount to be paid after applying fees.
+            incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i] - frontendFeesPaid[i];
+
+            // Push incentives to the AP and account for fees.
+            _pushIncentivesAndAccountFees(
+                incentive,
+                _ap,
+                incentiveAmountsPaid[i],
+                protocolFeesPaid[i],
+                frontendFeesPaid[i],
+                ip,
+                _frontendFeeRecipient
+            );
         }
     }
 
