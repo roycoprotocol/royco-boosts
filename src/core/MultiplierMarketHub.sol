@@ -178,12 +178,7 @@ contract MultiplierMarketHub {
 
         // Add the incentive rewards for this offer.
         IncentiveLocker(INCENTIVE_LOCKER).addIncentives(
-            ipOfferHash,
-            _incentivesOffered,
-            _incentiveAmountsPaid,
-            market.actionVerifier,
-            msg.sender,
-            market.frontendFee
+            msg.sender, market.actionVerifier, market.frontendFee, _incentivesOffered, _incentiveAmountsPaid
         );
 
         // Emit the IP offer creation event.

@@ -156,19 +156,17 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
      * @notice Asserts a new Merkle root using UMA's Optimistic Oracle V3.
      * @dev The caller must either be the `delegatedAsserter` or the Incentive Provider (IP) who set the incentive.
      *      If `_bondAmount` is zero, the minimum bond required by the OO is used.
-     * @param _entrypoint The entrypoint address linked to the incentive in `IncentiveLocker`.
      * @param _incentiveId The incentiveId in `IncentiveLocker`.
      * @param _merkleRoot The Merkle root being asserted.
      * @param _bondAmount The bond amount to be staked with UMA. If zero, uses OO's minimum bond.
      * @return assertionId The unique ID returned by UMA for the new assertion.
      */
-    function assertMerkleRoot(address _entrypoint, bytes32 _incentiveId, bytes32 _merkleRoot, uint256 _bondAmount)
+    function assertMerkleRoot(bytes32 _incentiveId, bytes32 _merkleRoot, uint256 _bondAmount)
         external
         returns (bytes32 assertionId)
     {
         // Retrieve data from the IncentiveLocker for this incentive ID.
-        (, address ip,, address actionVerifier) =
-            incentiveLocker.entrypointToIdToIncentiveInfo(_entrypoint, _incentiveId);
+        (, address ip, address actionVerifier) = incentiveLocker.incentiveIdToIncentiveInfo(_incentiveId);
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
@@ -189,8 +187,6 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
                 AncillaryData.toUtf8Bytes(_merkleRoot),
                 " for incentiveId: 0x",
                 AncillaryData.toUtf8Bytes(_incentiveId),
-                " originating from entrypoint: 0x",
-                AncillaryData.toUtf8BytesAddress(_entrypoint),
                 " meant for Action Verifier: 0x",
                 AncillaryData.toUtf8BytesAddress(actionVerifier),
                 ". Merkle Root asserted by: 0x",

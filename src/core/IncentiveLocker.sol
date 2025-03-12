@@ -19,20 +19,22 @@ contract IncentiveLocker is Ownable2Step {
     address public immutable POINTS_FACTORY;
 
     /// @notice Stores details of an incentive offer.
-    /// @dev Contains the entrypoint, action verifier, offered incentive tokens, and fee breakdown mappings.
+    /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
     struct IncentiveInfo {
         uint64 ratioOwed;
+        // uint32 startTimestamp;
+        // uint32 endTimestamp;
         address ip;
-        address entrypoint;
         address actionVerifier;
+        // bytes actionParams;
         address[] incentivesOffered;
         mapping(address => uint256) incentiveAmountsOffered; // amounts to be allocated to APs (per incentive)
         mapping(address => uint256) incentiveToProtocolFeeAmount; // amounts to be allocated to protocolFeeClaimant (per incentive)
         mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
     }
 
-    /// @notice Mapping from entrypoint and incentive ID to incentive information.
-    mapping(address => mapping(bytes32 => IncentiveInfo)) public entrypointToIdToIncentiveInfo;
+    /// @notice Mapping from incentive ID to incentive information.
+    mapping(bytes32 => IncentiveInfo) public incentiveIdToIncentiveInfo;
 
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address => mapping(address => uint256)) public feeClaimantToTokenToAmount;
@@ -46,9 +48,11 @@ contract IncentiveLocker is Ownable2Step {
     /// @notice Minimum frontend fee required for a market.
     uint64 public minimumFrontendFee;
 
+    /// @notice The number of incentive IDs the locker has minted so far
+    uint256 public numIncentiveIds;
+
     /// @notice Emitted when incentives are added to the locker.
-    /// @param entrypoint The address initiating the incentive addition.
-    /// @param incentiveID Unique identifier for the incentive. Up to the entrypoint to determine.
+    /// @param incentiveID Unique identifier for the incentive.
     /// @param actionVerifier The address verifying the incentive conditions.
     /// @param ip The address of the incentive provider.
     /// @param incentivesOffered Array of incentive token addresses.
@@ -56,7 +60,6 @@ contract IncentiveLocker is Ownable2Step {
     /// @param protocolFeesToBePaid Array of protocol fee amounts allocated per incentive.
     /// @param frontendFeesToBePaid Array of frontend fee amounts allocated per incentive.
     event IncentivesAdded(
-        address indexed entrypoint,
         bytes32 indexed incentiveID,
         address indexed actionVerifier,
         address ip,
@@ -67,7 +70,6 @@ contract IncentiveLocker is Ownable2Step {
     );
 
     event IncentivesClaimed(
-        address indexed entrypoint,
         bytes32 indexed incentiveID,
         address indexed ap,
         address actionVerifier,
@@ -103,21 +105,19 @@ contract IncentiveLocker is Ownable2Step {
         minimumFrontendFee = _minimumFrontendFee;
     }
 
-    /// @notice Adds incentives to the incentive locker on behalf of the entrypoint.
-    /// @param _incentiveID Unique identifier for the incentive. Up to the entrypoint to determine.
+    /// @notice Adds incentives to the incentive locker and returns it's identifier.
+    /// @param _ip Address of the incentive provider.
+    /// @param _actionVerifier Address of the action verifier.
+    /// @param _frontendFee Frontend fee rate for the market.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsPaid Array of total amounts paid for each incentive (including fees).
-    /// @param _actionVerifier Address of the action verifier.
-    /// @param _ip Address of the incentive provider.
-    /// @param _frontendFee Frontend fee rate for the market.
     function addIncentives(
-        bytes32 _incentiveID,
-        address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmountsPaid,
-        address _actionVerifier,
         address _ip,
-        uint64 _frontendFee
-    ) external {
+        address _actionVerifier,
+        uint64 _frontendFee,
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmountsPaid
+    ) external returns (bytes32 incentiveID) {
         uint256 numIncentives = _incentivesOffered.length;
         // Check that the frontend fee is valid
         require(_frontendFee > minimumFrontendFee && (protocolFee + _frontendFee) <= 1e18, InvalidFrontendFee());
@@ -131,11 +131,14 @@ contract IncentiveLocker is Ownable2Step {
             uint256[] memory frontendFeesToBePaid
         ) = _pullIncentives(_ip, _incentivesOffered, _incentiveAmountsPaid, _frontendFee);
 
+        incentiveID = keccak256(
+            abi.encode(++numIncentiveIds, _ip, _actionVerifier, _frontendFee, _incentivesOffered, _incentiveAmountsPaid)
+        );
+
         // Store the incentive information in persistent storage
-        IncentiveInfo storage incentiveInfo = entrypointToIdToIncentiveInfo[msg.sender][_incentiveID];
+        IncentiveInfo storage incentiveInfo = incentiveIdToIncentiveInfo[incentiveID];
         incentiveInfo.ratioOwed = 1e18; // All incentives are still left to be payed to APs
         incentiveInfo.ip = _ip;
-        incentiveInfo.entrypoint = msg.sender;
         incentiveInfo.actionVerifier = _actionVerifier;
         incentiveInfo.incentivesOffered = _incentivesOffered;
 
@@ -150,8 +153,7 @@ contract IncentiveLocker is Ownable2Step {
 
         // Emit event for adding incentives
         emit IncentivesAdded(
-            msg.sender,
-            _incentiveID,
+            incentiveID,
             _actionVerifier,
             _ip,
             _incentivesOffered,
@@ -162,22 +164,20 @@ contract IncentiveLocker is Ownable2Step {
     }
 
     /// @notice Claims incentives for given incentive IDs.
-    /// @param _entrypoints Array of entrypoints.
     /// @param _incentiveIDs Array of incentive identifiers.
     /// @param _claimParams Array of claim parameters for each incentive.
     /// @param _frontendFeeRecipient Address to receive the frontend fee.
     function claimIncentives(
-        address[] calldata _entrypoints,
         bytes32[] calldata _incentiveIDs,
         bytes[] calldata _claimParams,
         address _frontendFeeRecipient
     ) external {
         uint256 numClaims = _incentiveIDs.length;
-        require(numClaims == _entrypoints.length && numClaims == _claimParams.length, ArrayLengthMismatch());
+        require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
         for (uint256 i = 0; i < numClaims; ++i) {
             // Retrieve the incentive information.
-            IncentiveInfo storage incentiveInfo = entrypointToIdToIncentiveInfo[_entrypoints[i]][_incentiveIDs[i]];
+            IncentiveInfo storage incentiveInfo = incentiveIdToIncentiveInfo[_incentiveIDs[i]];
 
             // Verify the claim via the action verifier.
             (bool validClaim, uint64 ratioOwed) =
@@ -196,7 +196,6 @@ contract IncentiveLocker is Ownable2Step {
 
             // Emit the incentives claimed event.
             emit IncentivesClaimed(
-                incentiveInfo.entrypoint,
                 _incentiveIDs[i],
                 msg.sender,
                 incentiveInfo.actionVerifier,
