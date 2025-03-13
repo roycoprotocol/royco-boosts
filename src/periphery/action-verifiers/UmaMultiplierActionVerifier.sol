@@ -12,11 +12,11 @@ import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/c
  */
 contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
     /**
-     * @notice Parameters used for market creation.
-     * @param uniV3Pool The address of the Uniswap V3 Pool relevant to this market.
+     * @notice Action parameters for this action verifier.
+     * @param ipfsCID The link to the ipfs doc which store an action description and more info
      */
-    struct MarketParams {
-        address uniV3Pool;
+    struct ActionParams {
+        bytes32 ipfsCID;
     }
 
     /**
@@ -174,43 +174,4 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _assertionId The ID of the disputed assertion in UMA.
      */
     function _processAssertionDispute(bytes32 _assertionId) internal override {}
-}
-
-/**
- * @title IUniswapV3Pool
- * @notice Minimal interface for a Uniswap V3 Pool used to retrieve token addresses and fee tier.
- */
-interface IUniswapV3Pool {
-    /**
-     * @notice Retrieves the address of token0 in the pool.
-     * @return The address of token0.
-     */
-    function token0() external view returns (address);
-
-    /**
-     * @notice Retrieves the address of token1 in the pool.
-     * @return The address of token1.
-     */
-    function token1() external view returns (address);
-
-    /**
-     * @notice Retrieves the fee tier of the pool.
-     * @return The fee tier (in basis points).
-     */
-    function fee() external view returns (uint24);
-}
-
-/**
- * @title IUniswapV3Factory
- * @notice Minimal interface for a Uniswap V3 Factory used to verify if a given pool is official.
- */
-interface IUniswapV3Factory {
-    /**
-     * @notice Fetches the deployed Uniswap V3 Pool for the given token pair and fee tier.
-     * @param tokenA The address of tokenA.
-     * @param tokenB The address of tokenB.
-     * @param fee The fee tier (in basis points).
-     * @return pool The address of the corresponding pool if it exists, or the zero address otherwise.
-     */
-    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
 }
