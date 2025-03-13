@@ -74,7 +74,6 @@ contract IncentiveLocker is Ownable2Step {
     event IncentivesClaimed(
         bytes32 indexed incentivizedActionId,
         address indexed ap,
-        address actionVerifier,
         uint256[] incentiveAmountsOffered,
         uint256[] protocolFeesPaid,
         uint256[] frontendFeesPaid
@@ -90,7 +89,8 @@ contract IncentiveLocker is Ownable2Step {
     error TokenDoesNotExist();
     error InvalidPointsProgram();
     error OfferCannotContainDuplicateIncentives();
-    error Invalid();
+    error InvalidIncentivizedAction();
+    error InvalidClaim();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -139,6 +139,12 @@ contract IncentiveLocker is Ownable2Step {
         incentivizedActionId = keccak256(
             abi.encode(++numIncentivizedActionIds, _ip, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp)
         );
+
+        // Call hook on the Action Verifier to process the addition of this incentivized action
+        bool valid = IActionVerifier(_actionVerifier).processNewIncentivizedAction(
+            incentivizedActionId, _actionParams, msg.sender, _ip
+        );
+        require(valid, InvalidIncentivizedAction());
 
         // Store the incentive information in persistent storage
         IAS storage ias = incentivizedActionIdToIAS[incentivizedActionId];
@@ -190,8 +196,8 @@ contract IncentiveLocker is Ownable2Step {
 
             // Verify the claim via the action verifier.
             (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
-                IActionVerifier(ias.actionVerifier).verifyClaim(msg.sender, _incentivizedActionIds[i], _claimParams[i]);
-            require(valid, Invalid());
+                IActionVerifier(ias.actionVerifier).processClaim(msg.sender, _incentivizedActionIds[i], _claimParams[i]);
+            require(valid, InvalidClaim());
 
             // Process each incentive claim, calculating amounts and fees.
             (
@@ -202,12 +208,7 @@ contract IncentiveLocker is Ownable2Step {
 
             // Emit the incentives claimed event.
             emit IncentivesClaimed(
-                _incentivizedActionIds[i],
-                msg.sender,
-                ias.actionVerifier,
-                incentiveAmountsPaidToAP,
-                protocolFeesPaid,
-                frontendFeesPaid
+                _incentivizedActionIds[i], msg.sender, incentiveAmountsPaidToAP, protocolFeesPaid, frontendFeesPaid
             );
         }
     }

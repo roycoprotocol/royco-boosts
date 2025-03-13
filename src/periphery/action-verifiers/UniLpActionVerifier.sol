@@ -97,15 +97,15 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _actionParams Encoded bytes of `MarketParams` defining the targeted Uniswap V3 pool.
      * @return valid True if the Uniswap V3 pool is deployed under the official factory.
      */
-    function verifyIncentivizedAction(bytes32, bytes memory _actionParams)
+    function processNewIncentivizedAction(bytes32, bytes memory _actionParams)
         external
         view
         override
         returns (bool valid)
     {
         // Decode the parameters to retrieve the Uniswap V3 Pool address.
-        MarketParams memory marketParams = abi.decode(_actionParams, (MarketParams));
-        IUniswapV3Pool pool = IUniswapV3Pool(marketParams.uniV3Pool);
+        MarketParams memory actionParams = abi.decode(_actionParams, (MarketParams));
+        IUniswapV3Pool pool = IUniswapV3Pool(actionParams.uniV3Pool);
 
         // Retrieve pool metadata (token0, token1, fee).
         address token0 = pool.token0();
@@ -125,7 +125,7 @@ contract UniswapLpActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @return valid True if the claim is proven valid by the Merkle root.
      * @return ratioOwed The ratio of rewards owed to the user if the claim is valid.
      */
-    function verifyClaim(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
+    function processClaim(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
         external
         override
         returns (bool valid, uint64 ratioOwed)

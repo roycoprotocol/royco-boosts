@@ -17,11 +17,11 @@ contract MultiplierMarketHub {
     /// @notice Represents an Incentivized Action Market.
     /// @param frontendFee Fee for the market front-end.
     /// @param actionVerifier In charge of verifying market creation and claims.
-    /// @param marketParams Encoded market parameters.
+    /// @param actionParams Encoded market parameters.
     struct IAM {
         uint64 frontendFee;
         address actionVerifier;
-        bytes marketParams;
+        bytes actionParams;
     }
 
     /// @notice Details for an IP offer.
@@ -49,10 +49,10 @@ contract MultiplierMarketHub {
     /// @notice Emitted when a new market is created.
     /// @param marketHash The unique hash identifier of the market.
     /// @param actionVerifer The address of the action verifier used for market creation.
-    /// @param marketParams The encoded market parameters.
+    /// @param actionParams The encoded market parameters.
     /// @param frontendFee The fee associated with the market's front-end.
     event MarketCreated(
-        bytes32 indexed marketHash, address indexed actionVerifer, bytes marketParams, uint64 frontendFee
+        bytes32 indexed marketHash, address indexed actionVerifer, bytes actionParams, uint64 frontendFee
     );
 
     /// @notice Emitted when an IP offer is created.
@@ -87,7 +87,6 @@ contract MultiplierMarketHub {
         bytes32 indexed apOfferHash, bytes32 indexed ipOfferHash, address indexed ap, uint96 multiplier
     );
 
-    error Invalid();
     error OnlyTheIpCanFill();
     error IpOfferExpired();
 
@@ -131,15 +130,11 @@ contract MultiplierMarketHub {
         // Calculate the market hash using an incremental counter and provided parameters.
         marketHash = keccak256(abi.encode(++numMarkets, _actionVerifier, _actionParams, _frontendFee));
 
-        // Verify market parameters using the action verifier.
-        bool valid = IActionVerifier(_actionVerifier).verifyIncentivizedAction(marketHash, _actionParams);
-        require(valid, Invalid());
-
         // Store the market details.
         IAM storage market = marketHashToIAM[marketHash];
         market.frontendFee = _frontendFee;
         market.actionVerifier = _actionVerifier;
-        market.marketParams = _actionParams;
+        market.actionParams = _actionParams;
 
         // Emit the market creation event.
         emit MarketCreated(marketHash, _actionVerifier, _actionParams, _frontendFee);

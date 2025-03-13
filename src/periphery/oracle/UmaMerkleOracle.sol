@@ -166,7 +166,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
         returns (bytes32 assertionId)
     {
         // Retrieve data from the IncentiveLocker for this incentive ID.
-        (, address ip, address actionVerifier) = incentiveLocker.incentivizedActionIdToIAState(_incentivizedActionId);
+        (address ip,,, address actionVerifier,,,) = incentiveLocker.incentivizedActionIdToIAS(_incentivizedActionId);
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
