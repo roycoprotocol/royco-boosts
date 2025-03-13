@@ -98,16 +98,14 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @notice Processes incentivized action creation by validating the provided parameters.
      * @param _incentivizedActionId A unique hash identifier for the incentivized action in the incentive locker.
      * @param _actionParams Arbitrary parameters defining the action.
-     * @param _entrypoint The address which created the incentivized action.
      * @param _ip The address placing the incentives for this action.
      * @return valid Returns true if the market creation is valid.
      */
-    function processNewIncentivizedAction(
-        bytes32 _incentivizedActionId,
-        bytes memory _actionParams,
-        address _entrypoint,
-        address _ip
-    ) external override returns (bool valid) {
+    function processNewIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
+        external
+        override
+        returns (bool valid)
+    {
         // Todo: Check that the params are valid for this AV
         valid = true;
     }

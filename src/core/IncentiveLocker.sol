@@ -108,7 +108,6 @@ contract IncentiveLocker is Ownable2Step {
     }
 
     /// @notice Adds incentives to the incentive locker and returns it's identifier.
-    /// @param _ip Address of the incentive provider.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
     /// @param _frontendFee Frontend fee rate for the market.
@@ -117,7 +116,6 @@ contract IncentiveLocker is Ownable2Step {
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     function addIncentivizedAction(
-        address _ip,
         address _actionVerifier,
         bytes memory _actionParams,
         uint64 _frontendFee,
@@ -133,22 +131,24 @@ contract IncentiveLocker is Ownable2Step {
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
 
         // Pull the incentives from the IP
-        _pullIncentives(_ip, _incentivesOffered, _incentiveAmountsOffered);
+        _pullIncentives(_incentivesOffered, _incentiveAmountsOffered);
 
         // Compute a unique identifier for this incentivized action
         incentivizedActionId = keccak256(
-            abi.encode(++numIncentivizedActionIds, _ip, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp)
+            abi.encode(
+                ++numIncentivizedActionIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp
+            )
         );
 
         // Call hook on the Action Verifier to process the addition of this incentivized action
         bool valid = IActionVerifier(_actionVerifier).processNewIncentivizedAction(
-            incentivizedActionId, _actionParams, msg.sender, _ip
+            incentivizedActionId, _actionParams, msg.sender
         );
         require(valid, InvalidIncentivizedAction());
 
         // Store the incentive information in persistent storage
         IAS storage ias = incentivizedActionIdToIAS[incentivizedActionId];
-        ias.ip = _ip;
+        ias.ip = msg.sender;
         ias.startTimestamp = _startTimestamp;
         ias.protocolFee = protocolFee;
         ias.actionVerifier = _actionVerifier;
@@ -166,7 +166,7 @@ contract IncentiveLocker is Ownable2Step {
         // Emit event for the addition of the incentivized action
         emit IncentivizedActionAdded(
             incentivizedActionId,
-            _ip,
+            msg.sender,
             _actionVerifier,
             _actionParams,
             _startTimestamp,
@@ -242,12 +242,9 @@ contract IncentiveLocker is Ownable2Step {
     }
 
     /// @notice Pulls incentives from the incentive provider.
-    /// @param _ip Address of the incentive provider.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmounts Total amounts provided for each incentive (including fees).
-    function _pullIncentives(address _ip, address[] memory _incentivesOffered, uint256[] memory _incentiveAmounts)
-        internal
-    {
+    function _pullIncentives(address[] memory _incentivesOffered, uint256[] memory _incentiveAmounts) internal {
         // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
         address lastIncentive;
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
@@ -266,15 +263,17 @@ contract IncentiveLocker is Ownable2Step {
                 // 1. The points factory used to create the program is the same as this RecipeMarketHub's PF
                 // 2. IP placing the offer can award points
                 // 3. Points factory has this RecipeMarketHub marked as a valid RO - can be assumed true
-                if (POINTS_FACTORY != address(Points(incentive).pointsFactory()) || !Points(incentive).allowedIPs(_ip))
-                {
+                if (
+                    POINTS_FACTORY != address(Points(incentive).pointsFactory())
+                        || !Points(incentive).allowedIPs(msg.sender)
+                ) {
                     revert InvalidPointsProgram();
                 }
             } else {
                 // Prevent incentive deployment frontrunning
                 if (incentive.code.length == 0) revert TokenDoesNotExist();
                 // Transfer the total incentive amounts being paid to this contract
-                ERC20(incentive).safeTransferFrom(_ip, address(this), _incentiveAmounts[i]);
+                ERC20(incentive).safeTransferFrom(msg.sender, address(this), _incentiveAmounts[i]);
             }
         }
     }

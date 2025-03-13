@@ -177,17 +177,17 @@ contract MultiplierMarketHub {
         ipOffer.startTimestamp = _startTimestamp;
         ipOffer.endTimestamp = _endTimestamp;
 
-        // Add the incentive rewards for this offer.
-        IncentiveLocker(INCENTIVE_LOCKER).addIncentivizedAction(
-            msg.sender,
-            market.actionVerifier,
-            market.actionParams,
-            market.frontendFee,
-            _startTimestamp,
-            _endTimestamp,
-            _incentivesOffered,
-            _incentiveAmountsPaid
-        );
+        // // Add the incentive rewards for this offer.
+        // IncentiveLocker(INCENTIVE_LOCKER).addIncentivizedAction(
+        //     msg.sender,
+        //     market.actionVerifier,
+        //     market.actionParams,
+        //     market.frontendFee,
+        //     _startTimestamp,
+        //     _endTimestamp,
+        //     _incentivesOffered,
+        //     _incentiveAmountsPaid
+        // );
 
         // Emit the IP offer creation event.
         emit IPOfferCreated(_marketHash, ipOfferHash, msg.sender, _startTimestamp, _endTimestamp);
