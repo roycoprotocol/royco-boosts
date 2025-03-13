@@ -27,13 +27,13 @@ contract MultiplierMarketHub {
     /// @notice Details for an IP offer.
     /// @param marketHash Identifier for the market.
     /// @param ip Address of the Incentive Provider.
-    /// @param startBlock Block when the offer starts.
-    /// @param endBlock Block when the offer expires.
+    /// @param startTimestamp Block when the offer starts.
+    /// @param endTimestamp Block when the offer expires.
     struct IPOffer {
         bytes32 marketHash;
         address ip;
-        uint48 startBlock;
-        uint48 endBlock;
+        uint32 startTimestamp;
+        uint32 endTimestamp;
     }
 
     /// @notice Details for an AP offer.
@@ -59,10 +59,14 @@ contract MultiplierMarketHub {
     /// @param marketHash The unique hash identifier of the market.
     /// @param ipOfferHash The unique hash identifier of the IP offer.
     /// @param ip The address of the Incentive Provider creating the offer.
-    /// @param startBlock The starting block number when the offer becomes active.
-    /// @param endBlock The block number after which the offer expires.
+    /// @param startTimestamp The starting block number when the offer becomes active.
+    /// @param endTimestamp The block number after which the offer expires.
     event IPOfferCreated(
-        bytes32 indexed marketHash, bytes32 indexed ipOfferHash, address indexed ip, uint48 startBlock, uint48 endBlock
+        bytes32 indexed marketHash,
+        bytes32 indexed ipOfferHash,
+        address indexed ip,
+        uint32 startTimestamp,
+        uint32 endTimestamp
     );
 
     /// @notice Emitted when an AP offer is created.
@@ -142,23 +146,25 @@ contract MultiplierMarketHub {
 
     /// @notice Creates an IP offer in a market.
     /// @param _marketHash Market identifier.
-    /// @param _startBlock Offer start block.
-    /// @param _endBlock Offer expiration block.
+    /// @param _startTimestamp Offer start block.
+    /// @param _endTimestamp Offer expiration block.
     /// @param _ip Incentive Provider address.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsPaid Array of incentive amounts.
     /// @return ipOfferHash Unique IP offer identifier.
     function createIPOffer(
         bytes32 _marketHash,
-        uint48 _startBlock,
-        uint48 _endBlock,
+        uint32 _startTimestamp,
+        uint32 _endTimestamp,
         address _ip,
         address[] calldata _incentivesOffered,
         uint256[] calldata _incentiveAmountsPaid
     ) external returns (bytes32 ipOfferHash) {
         // Calculate the IP offer hash using an incremental counter and provided parameters.
         ipOfferHash = keccak256(
-            abi.encode(++numOffers, _marketHash, _startBlock, _endBlock, _ip, _incentivesOffered, _incentiveAmountsPaid)
+            abi.encode(
+                ++numOffers, _marketHash, _startTimestamp, _endTimestamp, _ip, _incentivesOffered, _incentiveAmountsPaid
+            )
         );
 
         // Retrieve the market details.
@@ -168,16 +174,23 @@ contract MultiplierMarketHub {
         IPOffer storage ipOffer = offerHashToIPOffer[ipOfferHash];
         ipOffer.marketHash = _marketHash;
         ipOffer.ip = msg.sender;
-        ipOffer.startBlock = _startBlock;
-        ipOffer.endBlock = _endBlock;
+        ipOffer.startTimestamp = _startTimestamp;
+        ipOffer.endTimestamp = _endTimestamp;
 
         // Add the incentive rewards for this offer.
         IncentiveLocker(INCENTIVE_LOCKER).addIncentivizedAction(
-            msg.sender, market.actionVerifier, market.frontendFee, _incentivesOffered, _incentiveAmountsPaid
+            msg.sender,
+            market.actionVerifier,
+            market.actionParams,
+            market.frontendFee,
+            _startTimestamp,
+            _endTimestamp,
+            _incentivesOffered,
+            _incentiveAmountsPaid
         );
 
         // Emit the IP offer creation event.
-        emit IPOfferCreated(_marketHash, ipOfferHash, msg.sender, _startBlock, _endBlock);
+        emit IPOfferCreated(_marketHash, ipOfferHash, msg.sender, _startTimestamp, _endTimestamp);
     }
 
     /// @notice Creates an AP offer for an IP offer.
@@ -205,7 +218,7 @@ contract MultiplierMarketHub {
 
         // Todo: Think about sybil attacks on this function which exhaust oracle resources (subgraph requests and rpc calls)
         // Ensure the offer has not expired.
-        require(block.number <= ipOffer.endBlock, IpOfferExpired());
+        require(block.timestamp <= ipOffer.endTimestamp, IpOfferExpired());
 
         // Emit the event indicating the IP offer has been filled.
         emit IPOfferFilled(_ipOfferHash, msg.sender);
@@ -221,7 +234,7 @@ contract MultiplierMarketHub {
         // Ensure the caller is the designated Incentive Provider.
         require(msg.sender == ipOffer.ip, OnlyTheIpCanFill());
         // Ensure the offer has not expired.
-        require(block.number <= ipOffer.endBlock, IpOfferExpired());
+        require(block.timestamp <= ipOffer.endTimestamp, IpOfferExpired());
 
         // Emit the event indicating the AP offer has been filled.
         emit APOfferFilled(_apOfferHash, apOffer.ipOfferHash, apOffer.ap, apOffer.multiplier);
