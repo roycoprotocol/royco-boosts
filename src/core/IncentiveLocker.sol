@@ -28,7 +28,6 @@ contract IncentiveLocker is Ownable2Step {
         // Pack the struct for gas op
         address actionVerifier;
         uint32 endTimestamp;
-        uint64 frontendFee;
         bytes actionParams;
         address[] incentivesOffered;
         mapping(address => uint256) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
@@ -45,9 +44,6 @@ contract IncentiveLocker is Ownable2Step {
 
     /// @notice Address allowed to claim protocol fees.
     address public protocolFeeClaimant;
-
-    /// @notice Minimum frontend fee required for a market.
-    uint64 public minimumFrontendFee;
 
     /// @notice The number of incentive IDs the locker has minted so far
     uint256 public numIncentivizedActionIds;
@@ -66,7 +62,6 @@ contract IncentiveLocker is Ownable2Step {
         uint32 startTimestamp,
         uint32 endTimestamp,
         uint64 protocolFee,
-        uint64 frontendFee,
         address[] incentivesOffered,
         uint256[] incentiveAmountsOffered
     );
@@ -75,8 +70,7 @@ contract IncentiveLocker is Ownable2Step {
         bytes32 indexed incentivizedActionId,
         address indexed ap,
         uint256[] incentiveAmountsOffered,
-        uint256[] protocolFeesPaid,
-        uint256[] frontendFeesPaid
+        uint256[] protocolFeesPaid
     );
 
     /// @param claimant The address that claimed the fees
@@ -85,7 +79,6 @@ contract IncentiveLocker is Ownable2Step {
     event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
 
     error ArrayLengthMismatch();
-    error InvalidFrontendFee();
     error TokenDoesNotExist();
     error InvalidPointsProgram();
     error OfferCannotContainDuplicateIncentives();
@@ -96,21 +89,16 @@ contract IncentiveLocker is Ownable2Step {
     /// @param _owner Address of the contract owner.
     /// @param _pointsFactory Address of the PointsFactory contract.
     /// @param _protocolFee Protocol fee rate (1e18 equals 100% fee).
-    /// @param _minimumFrontendFee Minimum frontend fee required.
-    constructor(address _owner, address _pointsFactory, uint64 _protocolFee, uint64 _minimumFrontendFee)
-        Ownable(_owner)
-    {
+    constructor(address _owner, address _pointsFactory, uint64 _protocolFee) Ownable(_owner) {
         // Set the initial contract state
         POINTS_FACTORY = _pointsFactory;
         protocolFeeClaimant = _owner;
         protocolFee = _protocolFee;
-        minimumFrontendFee = _minimumFrontendFee;
     }
 
     /// @notice Adds incentives to the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
-    /// @param _frontendFee Frontend fee rate for the market.
     /// @param _startTimestamp The timestamp to start distributing incentives.
     /// @param _endTimestamp The timestamp to stop distributing incentives.
     /// @param _incentivesOffered Array of incentive token addresses.
@@ -118,15 +106,12 @@ contract IncentiveLocker is Ownable2Step {
     function addIncentivizedAction(
         address _actionVerifier,
         bytes memory _actionParams,
-        uint64 _frontendFee,
         uint32 _startTimestamp,
         uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
     ) external returns (bytes32 incentivizedActionId) {
         uint256 numIncentives = _incentivesOffered.length;
-        // Check that the frontend fee is valid
-        require(_frontendFee > minimumFrontendFee && (protocolFee + _frontendFee) <= 1e18, InvalidFrontendFee());
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
 
@@ -152,7 +137,6 @@ contract IncentiveLocker is Ownable2Step {
         ias.protocolFee = protocolFee;
         ias.actionVerifier = _actionVerifier;
         ias.endTimestamp = _endTimestamp;
-        ias.frontendFee = _frontendFee;
         ias.actionParams = _actionParams;
         ias.incentivesOffered = _incentivesOffered;
 
@@ -171,7 +155,6 @@ contract IncentiveLocker is Ownable2Step {
             _startTimestamp,
             _endTimestamp,
             ias.protocolFee,
-            _frontendFee,
             _incentivesOffered,
             _incentiveAmountsOffered
         );
@@ -180,12 +163,7 @@ contract IncentiveLocker is Ownable2Step {
     /// @notice Claims incentives for given incentive IDs.
     /// @param _incentivizedActionIds Array of incentive identifiers.
     /// @param _claimParams Array of claim parameters for each incentive.
-    /// @param _frontendFeeRecipient Address to receive the frontend fee.
-    function claimIncentives(
-        bytes32[] calldata _incentivizedActionIds,
-        bytes[] calldata _claimParams,
-        address _frontendFeeRecipient
-    ) external {
+    function claimIncentives(bytes32[] calldata _incentivizedActionIds, bytes[] calldata _claimParams) external {
         uint256 numClaims = _incentivizedActionIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
@@ -199,16 +177,11 @@ contract IncentiveLocker is Ownable2Step {
             require(valid, InvalidClaim());
 
             // Process each incentive claim, calculating amounts and fees.
-            (
-                uint256[] memory incentiveAmountsPaidToAP,
-                uint256[] memory protocolFeesPaid,
-                uint256[] memory frontendFeesPaid
-            ) = _processIncentiveClaim(ias, msg.sender, _frontendFeeRecipient, incentives, incentiveAmountsOwed);
+            (uint256[] memory incentiveAmountsPaidToAP, uint256[] memory protocolFeesPaid,) =
+                _processIncentiveClaim(ias, msg.sender, incentives, incentiveAmountsOwed);
 
             // Emit the incentives claimed event.
-            emit IncentivesClaimed(
-                _incentivizedActionIds[i], msg.sender, incentiveAmountsPaidToAP, protocolFeesPaid, frontendFeesPaid
-            );
+            emit IncentivesClaimed(_incentivizedActionIds[i], msg.sender, incentiveAmountsPaidToAP, protocolFeesPaid);
         }
     }
 
@@ -232,12 +205,6 @@ contract IncentiveLocker is Ownable2Step {
     /// @param _protocolFee The new protocol fee rate (1e18 equals 100% fee).
     function setProtocolFee(uint64 _protocolFee) external payable onlyOwner {
         protocolFee = _protocolFee;
-    }
-
-    /// @notice Sets the minimum frontend fee for a market.
-    /// @param _minFrontendFee The new minimum frontend fee (1e18 equals 100% fee).
-    function setMinimumFrontendFee(uint64 _minFrontendFee) external payable onlyOwner {
-        minimumFrontendFee = _minFrontendFee;
     }
 
     /// @notice Pulls incentives from the incentive provider.
@@ -282,26 +249,16 @@ contract IncentiveLocker is Ownable2Step {
     ///      and pushes the calculated amounts to the _ap while accounting for fees.
     /// @param _ias Storage reference to the incentive information.
     /// @param _ap The address of the AP claiming the incentives.
-    /// @param _frontendFeeRecipient The address that will receive the frontend fee.
     /// @param _incentives The incentive tokens to pay out to the AP.
     /// @param _incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
     /// @return incentiveAmountsPaid Array of net incentive amounts paid to the AP.
     /// @return protocolFeesPaid Array of protocol fee amounts paid.
-    /// @return frontendFeesPaid Array of frontend fee amounts paid.
     function _processIncentiveClaim(
         IAS storage _ias,
         address _ap,
-        address _frontendFeeRecipient,
         address[] memory _incentives,
         uint256[] memory _incentiveAmountsOwed
-    )
-        internal
-        returns (
-            uint256[] memory incentiveAmountsPaid,
-            uint256[] memory protocolFeesPaid,
-            uint256[] memory frontendFeesPaid
-        )
-    {
+    ) internal returns (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) {
         // Cache for gas op
         uint256 numIncentives = _incentives.length;
         address ip = _ias.ip;
@@ -310,7 +267,6 @@ contract IncentiveLocker is Ownable2Step {
         // Initialize array for event emission
         incentiveAmountsPaid = new uint256[](numIncentives);
         protocolFeesPaid = new uint256[](numIncentives);
-        frontendFeesPaid = new uint256[](numIncentives);
 
         for (uint256 i = 0; i < numIncentives; ++i) {
             // Cache for gas op
@@ -322,21 +278,12 @@ contract IncentiveLocker is Ownable2Step {
 
             // Calculate fee amounts based on the claim ratio.
             protocolFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ias.protocolFee);
-            frontendFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ias.frontendFee);
 
             // Calculate the net incentive amount to be paid after applying fees.
-            incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i] - frontendFeesPaid[i];
+            incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i];
 
             // Push incentives to the AP and account for fees.
-            _pushIncentivesAndAccountFees(
-                incentive,
-                _ap,
-                incentiveAmountsPaid[i],
-                protocolFeesPaid[i],
-                frontendFeesPaid[i],
-                ip,
-                _frontendFeeRecipient
-            );
+            _pushIncentivesAndAccountFees(incentive, _ap, incentiveAmountsPaid[i], protocolFeesPaid[i], ip);
         }
     }
 
@@ -345,21 +292,16 @@ contract IncentiveLocker is Ownable2Step {
     /// @param to Recipient address for the incentive.
     /// @param incentiveAmount Net incentive amount to be transferred.
     /// @param protocolFeeAmount Protocol fee amount.
-    /// @param frontendFeeAmount Frontend fee amount.
     /// @param ip Address of the incentive provider.
-    /// @param frontendFeeRecipient Address to receive the frontend fee.
     function _pushIncentivesAndAccountFees(
         address incentive,
         address to,
         uint256 incentiveAmount,
         uint256 protocolFeeAmount,
-        uint256 frontendFeeAmount,
-        address ip,
-        address frontendFeeRecipient
+        address ip
     ) internal {
         // Take fees
         _accountFee(protocolFeeClaimant, incentive, protocolFeeAmount, ip);
-        _accountFee(frontendFeeRecipient, incentive, frontendFeeAmount, ip);
 
         // Push incentives to AP
         if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
