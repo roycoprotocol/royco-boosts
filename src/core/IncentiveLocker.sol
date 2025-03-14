@@ -24,10 +24,9 @@ contract IncentiveLocker is Ownable2Step {
         // Pack the struct for gas op
         address ip;
         uint32 startTimestamp;
-        uint64 protocolFee;
-        // Pack the struct for gas op
-        address actionVerifier;
         uint32 endTimestamp;
+        uint64 protocolFee;
+        address actionVerifier;
         bytes actionParams;
         address[] incentivesOffered;
         mapping(address => uint256) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
@@ -177,7 +176,7 @@ contract IncentiveLocker is Ownable2Step {
             require(valid, InvalidClaim());
 
             // Process each incentive claim, calculating amounts and fees.
-            (uint256[] memory incentiveAmountsPaidToAP, uint256[] memory protocolFeesPaid,) =
+            (uint256[] memory incentiveAmountsPaidToAP, uint256[] memory protocolFeesPaid) =
                 _processIncentiveClaim(ias, msg.sender, incentives, incentiveAmountsOwed);
 
             // Emit the incentives claimed event.

@@ -11,12 +11,9 @@ interface IActionVerifier {
      * @param _ip The address placing the incentives for this action.
      * @return valid Returns true if the market creation is valid.
      */
-    function processIncentivizedAction(
-        bytes32 _incentivizedActionId,
-        bytes memory _actionParams,
-        address _ip,
-        address _entrpoint
-    ) external returns (bool valid);
+    function processIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
+        external
+        returns (bool valid);
 
     /**
      * @notice Processes a claim by validating the provided parameters.
