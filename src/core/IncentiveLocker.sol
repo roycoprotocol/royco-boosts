@@ -141,9 +141,8 @@ contract IncentiveLocker is Ownable2Step {
         );
 
         // Call hook on the Action Verifier to process the addition of this incentivized action
-        bool valid = IActionVerifier(_actionVerifier).processNewIncentivizedAction(
-            incentivizedActionId, _actionParams, msg.sender
-        );
+        bool valid =
+            IActionVerifier(_actionVerifier).processIncentivizedAction(incentivizedActionId, _actionParams, msg.sender);
         require(valid, InvalidIncentivizedAction());
 
         // Store the incentive information in persistent storage

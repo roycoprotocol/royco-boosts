@@ -101,11 +101,12 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param _ip The address placing the incentives for this action.
      * @return valid Returns true if the market creation is valid.
      */
-    function processNewIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
+    function processIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
         external
         override
         returns (bool valid)
     {
+        require(msg.sender == address(incentiveLocker));
         // Todo: Check that the params are valid for this AV
         valid = true;
     }
