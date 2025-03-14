@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Ownable, Ownable2Step} from "../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {Auth, Authority} from "../../lib/solmate/src/auth/Auth.sol";
 import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
@@ -11,7 +11,7 @@ import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
 /// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
-contract IncentiveLocker is Ownable2Step {
+contract IncentiveLocker is Auth {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -88,7 +88,7 @@ contract IncentiveLocker is Ownable2Step {
     /// @param _owner Address of the contract owner.
     /// @param _pointsFactory Address of the PointsFactory contract.
     /// @param _protocolFee Protocol fee rate (1e18 equals 100% fee).
-    constructor(address _owner, address _pointsFactory, uint64 _protocolFee) Ownable(_owner) {
+    constructor(address _owner, address _pointsFactory, uint64 _protocolFee) Auth(_owner, Authority(address(0))) {
         // Set the initial contract state
         POINTS_FACTORY = _pointsFactory;
         protocolFeeClaimant = _owner;
@@ -109,7 +109,7 @@ contract IncentiveLocker is Ownable2Step {
         uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
-    ) external returns (bytes32 incentivizedActionId) {
+    ) external requiresAuth returns (bytes32 incentivizedActionId) {
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
@@ -196,13 +196,13 @@ contract IncentiveLocker is Ownable2Step {
 
     /// @notice Sets the protocol fee recipient.
     /// @param _protocolFeeClaimant Address allowed to claim protocol fees.
-    function setProtocolFeeClaimant(address _protocolFeeClaimant) external payable onlyOwner {
+    function setProtocolFeeClaimant(address _protocolFeeClaimant) external payable requiresAuth {
         protocolFeeClaimant = _protocolFeeClaimant;
     }
 
     /// @notice Sets the protocol fee rate.
     /// @param _protocolFee The new protocol fee rate (1e18 equals 100% fee).
-    function setProtocolFee(uint64 _protocolFee) external payable onlyOwner {
+    function setProtocolFee(uint64 _protocolFee) external payable requiresAuth {
         protocolFee = _protocolFee;
     }
 
