@@ -68,7 +68,7 @@ contract IncentiveLocker is Auth {
     event IncentivesClaimed(
         bytes32 indexed incentivizedActionId,
         address indexed ap,
-        uint256[] incentiveAmountsOffered,
+        uint256[] incentiveAmountsPaid,
         uint256[] protocolFeesPaid
     );
 
@@ -176,11 +176,11 @@ contract IncentiveLocker is Auth {
             require(valid, InvalidClaim());
 
             // Process each incentive claim, calculating amounts and fees.
-            (uint256[] memory incentiveAmountsPaidToAP, uint256[] memory protocolFeesPaid) =
-                _processIncentiveClaim(ias, msg.sender, incentives, incentiveAmountsOwed);
+            (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
+                _remitIncentivesAndFees(ias, msg.sender, incentives, incentiveAmountsOwed);
 
             // Emit the incentives claimed event.
-            emit IncentivesClaimed(_incentivizedActionIds[i], msg.sender, incentiveAmountsPaidToAP, protocolFeesPaid);
+            emit IncentivesClaimed(_incentivizedActionIds[i], msg.sender, incentiveAmountsPaid, protocolFeesPaid);
         }
     }
 
@@ -252,7 +252,7 @@ contract IncentiveLocker is Auth {
     /// @param _incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
     /// @return incentiveAmountsPaid Array of net incentive amounts paid to the AP.
     /// @return protocolFeesPaid Array of protocol fee amounts paid.
-    function _processIncentiveClaim(
+    function _remitIncentivesAndFees(
         IAS storage _ias,
         address _ap,
         address[] memory _incentives,
