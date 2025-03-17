@@ -183,23 +183,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
         // Create the UMA assertion with explanatory ancillary data.
         assertionId = oo.assertTruth(
-            abi.encodePacked(
-                "Merkle Root asserted: 0x",
-                AncillaryData.toUtf8Bytes(_merkleRoot),
-                " for incentivizedActionId: 0x",
-                AncillaryData.toUtf8Bytes(_incentivizedActionId),
-                " meant for Action Verifier: 0x",
-                AncillaryData.toUtf8BytesAddress(actionVerifier),
-                " with Action Params: 0x",
-                actionParams,
-                ". Merkle Root asserted by: 0x",
-                AncillaryData.toUtf8BytesAddress(msg.sender),
-                " at timestamp: ",
-                AncillaryData.toUtf8BytesUint(block.timestamp),
-                " in the UmaMerkleOracle at 0x",
-                AncillaryData.toUtf8BytesAddress(address(this)),
-                " is valid."
-            ),
+            _generateUmaClaim(_merkleRoot, _incentivizedActionId, actionParams),
             msg.sender,
             address(this), // This contract will handle the callbacks.
             address(0), // No sovereign security.
@@ -275,6 +259,28 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     function setAssertionLiveness(uint64 _assertionLiveness) external onlyOwner {
         assertionLiveness = _assertionLiveness;
         emit AssertionLivenessUpdated(_assertionLiveness);
+    }
+
+    function _generateUmaClaim(bytes32 _merkleRoot, bytes32 _incentivizedActionId, bytes memory _actionParams)
+        internal
+        virtual
+        returns (bytes memory claim)
+    {
+        claim = abi.encodePacked(
+            "Merkle Root asserted: 0x",
+            AncillaryData.toUtf8Bytes(_merkleRoot),
+            " for incentivizedActionId: 0x",
+            AncillaryData.toUtf8Bytes(_incentivizedActionId),
+            " meant for Action Verifier: 0x",
+            AncillaryData.toUtf8BytesAddress(address(this)),
+            " with Action Params: 0x",
+            _actionParams,
+            ". Merkle Root asserted by: 0x",
+            AncillaryData.toUtf8BytesAddress(msg.sender),
+            " at timestamp: ",
+            AncillaryData.toUtf8BytesUint(block.timestamp),
+            " is valid."
+        );
     }
 
     /**
