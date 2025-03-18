@@ -8,6 +8,11 @@ import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.s
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
+enum DistributionType {
+    IMMUTABLE,
+    STREAMING
+}
+
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
 /// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
@@ -160,27 +165,38 @@ contract IncentiveLocker is Auth {
     }
 
     /// @notice Claims incentives for given incentive IDs.
-    /// @param _incentivizedActionIds Array of incentive identifiers.
-    /// @param _claimParams Array of claim parameters for each incentive.
-    function claimIncentives(bytes32[] calldata _incentivizedActionIds, bytes[] calldata _claimParams) external {
+    /// @notice The address of the Action Provider to claim incentives for.
+    /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
+    /// @param _claimParams Claim parameters used by the AV to process the claim.
+    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public {
+        // Retrieve the incentive information.
+        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+
+        // Verify the claim via the action verifier.
+        (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
+            IActionVerifier(ias.actionVerifier).processClaim(_ap, _incentivizedActionId, _claimParams);
+        require(valid, InvalidClaim());
+
+        // Process each incentive claim, calculating amounts and fees.
+        (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
+            _remitIncentivesAndFees(ias, _ap, incentives, incentiveAmountsOwed);
+
+        // Emit the incentives claimed event.
+        emit IncentivesClaimed(_incentivizedActionId, _ap, incentiveAmountsPaid, protocolFeesPaid);
+    }
+
+    /// @notice Claims incentives for given incentive IDs.
+    /// @notice The address of the Action Provider to claim incentives for.
+    /// @param _incentivizedActionIds Array of incentivized action identifier to claim incentives from.
+    /// @param _claimParams Array of claim parameters for each IA ID used by the AV to process the claim.
+    function claimIncentives(address _ap, bytes32[] memory _incentivizedActionIds, bytes[] memory _claimParams)
+        external
+    {
         uint256 numClaims = _incentivizedActionIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
         for (uint256 i = 0; i < numClaims; ++i) {
-            // Retrieve the incentive information.
-            IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionIds[i]];
-
-            // Verify the claim via the action verifier.
-            (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
-                IActionVerifier(ias.actionVerifier).processClaim(msg.sender, _incentivizedActionIds[i], _claimParams[i]);
-            require(valid, InvalidClaim());
-
-            // Process each incentive claim, calculating amounts and fees.
-            (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
-                _remitIncentivesAndFees(ias, msg.sender, incentives, incentiveAmountsOwed);
-
-            // Emit the incentives claimed event.
-            emit IncentivesClaimed(_incentivizedActionIds[i], msg.sender, incentiveAmountsPaid, protocolFeesPaid);
+            claimIncentives(_ap, _incentivizedActionIds[i], _claimParams[i]);
         }
     }
 

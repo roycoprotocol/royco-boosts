@@ -26,12 +26,12 @@ contract MultiplierMarketHub {
 
     /// @notice Details for an IP offer.
     /// @notice Default multiplier for an ipOffer is 1x.
-    /// @param marketHash Identifier for the market.
+    /// @param ip Address of the Incentive Provider that created the offer.
     /// @param startTimestamp Timestamp when the offer starts.
     /// @param endTimestamp Timestamp when the offer expires.
     /// @param size Optional quantitative parameter to enable negotiation for (dollars, discrete token amounts, etc.)
     ///             The ActionVerifer is responsible for interpreting this parameter.
-    /// @param ip Address of the Incentive Provider that created the offer.
+    /// @param marketHash Identifier for the market.
     struct IPOffer {
         address ip;
         uint32 startTimestamp;
@@ -166,9 +166,6 @@ contract MultiplierMarketHub {
         // Calculate the IP offer hash using an incremental counter and provided parameters.
         ipOfferHash = keccak256(abi.encode(++numOffers, _marketHash, _startTimestamp, _endTimestamp, _size, msg.sender));
 
-        // Retrieve the market details.
-        IAM storage market = marketHashToIAM[_marketHash];
-
         // Store the IP offer details.
         IPOffer storage ipOffer = offerHashToIPOffer[ipOfferHash];
         ipOffer.ip = msg.sender;
@@ -176,6 +173,9 @@ contract MultiplierMarketHub {
         ipOffer.endTimestamp = _endTimestamp;
         ipOffer.size = _size;
         ipOffer.marketHash = _marketHash;
+
+        // Retrieve the market details.
+        IAM storage market = marketHashToIAM[_marketHash];
 
         // Add the incentive for this offer to the IncentiveLocker
         bytes32 incentiveId = IncentiveLocker(incentiveLocker).addIncentivizedAction(
