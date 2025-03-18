@@ -141,7 +141,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @return resolved A boolean indicating whether the assertion is resolved.
      * @return merkleRoot The resolved Merkle root (zero if unresolved).
      */
-    function getMerkleRoot(bytes32 assertionId) external view returns (bool resolved, bytes32 merkleRoot) {
+    function getMerkleRoot(bytes32 assertionId) external view virtual returns (bool resolved, bytes32 merkleRoot) {
         if (!assertionIdToMerkleRootAssertion[assertionId].resolved) {
             return (false, 0);
         }
@@ -204,7 +204,11 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @param _assertionId The assertionId in UMA.
      * @param _assertedTruthfully Whether UMA validated the assertion as true.
      */
-    function assertionResolvedCallback(bytes32 _assertionId, bool _assertedTruthfully) external onlyOptimisticOracle {
+    function assertionResolvedCallback(bytes32 _assertionId, bool _assertedTruthfully)
+        external
+        virtual
+        onlyOptimisticOracle
+    {
         if (_assertedTruthfully) {
             // Load the assertion from persistent storage
             MerkleRootAssertion storage merkleRootAssertion = assertionIdToMerkleRootAssertion[_assertionId];
@@ -223,7 +227,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @dev May be used to handle logic whenever a dispute arises (e.g., for additional record keeping).
      * @param _assertionId The assertionId in UMA.
      */
-    function assertionDisputedCallback(bytes32 _assertionId) external onlyOptimisticOracle {
+    function assertionDisputedCallback(bytes32 _assertionId) external virtual onlyOptimisticOracle {
         // Call the ActionVerifier specific hook
         _processAssertionDispute(_assertionId);
     }
@@ -233,7 +237,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @dev Can only be called by the contract owner.
      * @param _delegatedAsserter The new delegatedAsserter address.
      */
-    function setDelegatedAsserter(address _delegatedAsserter) external onlyOwner {
+    function setDelegatedAsserter(address _delegatedAsserter) external virtual onlyOwner {
         delegatedAsserter = _delegatedAsserter;
         emit DelegatedAsserterUpdated(_delegatedAsserter);
     }
@@ -243,7 +247,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @dev Can only be called by the contract owner.
      * @param _bondCurrency The new bondCurrency address.
      */
-    function setBondCurrency(address _bondCurrency) external onlyOwner {
+    function setBondCurrency(address _bondCurrency) external virtual onlyOwner {
         bondCurrency = _bondCurrency;
         emit BondCurrencyUpdated(_bondCurrency);
     }
@@ -253,7 +257,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
      * @dev Can only be called by the contract owner.
      * @param _assertionLiveness The new liveness period (in seconds) for assertions.
      */
-    function setAssertionLiveness(uint64 _assertionLiveness) external onlyOwner {
+    function setAssertionLiveness(uint64 _assertionLiveness) external virtual onlyOwner {
         assertionLiveness = _assertionLiveness;
         emit AssertionLivenessUpdated(_assertionLiveness);
     }
