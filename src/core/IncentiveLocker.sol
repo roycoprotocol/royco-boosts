@@ -8,11 +8,6 @@ import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.s
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
-enum DistributionType {
-    IMMUTABLE,
-    STREAMING
-}
-
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
 /// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
@@ -96,7 +91,11 @@ contract IncentiveLocker is IncentiveLockerBase {
     /// @notice The address of the Action Provider to claim incentives for.
     /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
     /// @param _claimParams Claim parameters used by the AV to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public override {
+    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
+        public
+        override
+        requiresAuth
+    {
         // Retrieve the incentive information.
         IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
 

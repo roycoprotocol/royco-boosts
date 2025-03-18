@@ -5,7 +5,7 @@ import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contrac
 import {OptimisticOracleV3Interface, IERC20} from "../../interfaces/OptimisticOracleV3Interface.sol";
 import {OptimisticOracleV3CallbackRecipientInterface} from
     "../../interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
-import {IncentiveLocker} from "../../core/IncentiveLocker.sol";
+import {IncentiveLockerBase} from "../../base/IncentiveLockerBase.sol";
 import {ERC20} from "../../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {AncillaryData} from "../../libraries/AncillaryData.sol";
@@ -14,7 +14,7 @@ import {AncillaryData} from "../../libraries/AncillaryData.sol";
  * @title UmaMerkleOracle
  * @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
  *         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
- *         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
+ *         or dispute of each assertion, and integrates with Royco's IncentiveLockerBase.
  * @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
  *      and validating merkle roots for incentive claims.
  */
@@ -25,8 +25,8 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     OptimisticOracleV3Interface public immutable oo;
     /// @notice The default identifier used by the Optimistic Oracle.
     bytes32 public immutable defaultIdentifier;
-    /// @notice The IncentiveLocker contract used to store incentives and associated data.
-    IncentiveLocker public immutable incentiveLocker;
+    /// @notice The IncentiveLockerBase contract used to store incentives and associated data.
+    IncentiveLockerBase public immutable incentiveLocker;
 
     /// @notice An address allowed to assert Merkle roots on behalf of others.
     address public delegatedAsserter;
@@ -37,8 +37,8 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
     /**
      * @notice A struct holding the key data of a Merkle root assertion.
-     * @dev    Each assertion links to an `incentivizedActionId` in the `IncentiveLocker` contract.
-     * @param incentivizedActionId The incentivizedActionId used to track the incentives for this Merkle root in `IncentiveLocker`.
+     * @dev    Each assertion links to an `incentivizedActionId` in the `IncentiveLockerBase` contract.
+     * @param incentivizedActionId The incentivizedActionId used to track the incentives for this Merkle root in `IncentiveLockerBase`.
      * @param merkleRoot The asserted Merkle root.
      * @param asserter The address that made the assertion.
      * @param resolved A boolean indicating if the assertion has been resolved (validated as true).
@@ -55,7 +55,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
     /**
      * @notice Emitted when a Merkle root is asserted.
-     * @param incentivizedActionId The incentivizedActionId associated with this Merkle root in `IncentiveLocker`.
+     * @param incentivizedActionId The incentivizedActionId associated with this Merkle root in `IncentiveLockerBase`.
      * @param merkleRoot The Merkle root being asserted.
      * @param asserter The address that made the assertion.
      * @param assertionId The unique ID of the assertion in UMA's OO system.
@@ -66,7 +66,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
 
     /**
      * @notice Emitted when a previously asserted Merkle root is resolved (validated true by the OO).
-     * @param incentivizedActionId The incentivizedActionId associated with this Merkle root in `IncentiveLocker`.
+     * @param incentivizedActionId The incentivizedActionId associated with this Merkle root in `IncentiveLockerBase`.
      * @param merkleRoot The Merkle root that was verified.
      * @param asserter The address that originally made the assertion.
      * @param assertionId The unique ID of the assertion in UMA's OO system.
@@ -118,7 +118,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
      * @notice Deploys the UmaMerkleOracle contract.
      * @param _owner The initial owner of the contract.
      * @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
-     * @param _incentiveLocker The address of the IncentiveLocker contract.
+     * @param _incentiveLocker The address of the IncentiveLockerBase contract.
      * @param _delegatedAsserter The initial delegatedAsserter address.
      * @param _bondCurrency The address of the ERC20 token used for UMA bonding.
      * @param _assertionLiveness The liveness duration (in seconds) for UMA assertions.
@@ -133,7 +133,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     ) Ownable(_owner) {
         oo = OptimisticOracleV3Interface(_optimisticOracleV3);
         defaultIdentifier = oo.defaultIdentifier();
-        incentiveLocker = IncentiveLocker(_incentiveLocker);
+        incentiveLocker = IncentiveLockerBase(_incentiveLocker);
         delegatedAsserter = _delegatedAsserter;
         bondCurrency = _bondCurrency;
         assertionLiveness = _assertionLiveness;
@@ -156,7 +156,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
      * @notice Asserts a new Merkle root using UMA's Optimistic Oracle V3.
      * @dev The caller must either be the `delegatedAsserter` or the Incentive Provider (IP) who set the incentive.
      *      If `_bondAmount` is zero, the minimum bond required by the OO is used.
-     * @param _incentivizedActionId The incentivizedActionId in `IncentiveLocker`.
+     * @param _incentivizedActionId The incentivizedActionId in `IncentiveLockerBase`.
      * @param _merkleRoot The Merkle root being asserted.
      * @param _bondAmount The bond amount to be staked with UMA. If zero, uses OO's minimum bond.
      * @return assertionId The unique ID returned by UMA for the new assertion.
@@ -165,7 +165,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
         external
         returns (bytes32 assertionId)
     {
-        // Retrieve data from the IncentiveLocker for this incentive ID.
+        // Retrieve data from the IncentiveLockerBase for this incentive ID.
         (address ip,,,, address actionVerifier, bytes memory actionParams) =
             incentiveLocker.incentivizedActionIdToIAS(_incentivizedActionId);
 

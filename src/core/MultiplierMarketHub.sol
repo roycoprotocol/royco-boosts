@@ -7,7 +7,7 @@ import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
-import {IncentiveLocker} from "./IncentiveLocker.sol";
+import {IncentiveLockerBase} from "../base/IncentiveLockerBase.sol";
 
 /// @title MultiplierMarketHub
 /// @notice Manages multiplier based IAMs with offers from Incentive Providers (IP) and Action Providers (AP).
@@ -106,7 +106,7 @@ contract MultiplierMarketHub {
     // State Variables
     // -------------------------------------------------------------------------------------------
 
-    /// @notice Address of the IncentiveLocker contract used to manage incentive rewards.
+    /// @notice Address of the Incentive Locker contract used to manage incentive campaigns.
     address public immutable incentiveLocker;
 
     /// @notice Mapping from market hash to its Incentivized Action Market (IAM) details.
@@ -124,8 +124,8 @@ contract MultiplierMarketHub {
     /// @notice Counter for the number of offers created.
     uint256 numOffers;
 
-    /// @notice Sets the IncentiveLocker address.
-    /// @param _incentiveLocker Address of the IncentiveLocker contract.
+    /// @notice Sets the IncentiveLockerBase address.
+    /// @param _incentiveLocker Address of the IncentiveLockerBase contract.
     constructor(address _incentiveLocker) {
         incentiveLocker = _incentiveLocker;
     }
@@ -177,8 +177,8 @@ contract MultiplierMarketHub {
         // Retrieve the market details.
         IAM storage market = marketHashToIAM[_marketHash];
 
-        // Add the incentive for this offer to the IncentiveLocker
-        bytes32 incentiveId = IncentiveLocker(incentiveLocker).addIncentivizedAction(
+        // Add the incentive for this offer to the IncentiveLockerBase
+        bytes32 incentiveId = IncentiveLockerBase(incentiveLocker).addIncentivizedAction(
             market.actionVerifier,
             market.actionParams,
             _startTimestamp,

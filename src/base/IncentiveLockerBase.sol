@@ -8,7 +8,7 @@ import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.s
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
-enum DistributionType {
+enum IncentivePolicy {
     IMMUTABLE,
     STREAMING
 }
@@ -100,7 +100,7 @@ abstract contract IncentiveLockerBase is Auth {
     }
 
     /**
-     * @notice Returns all read-only data for the specified incentivized action.
+     * @notice Returns the state for the specified incentivized action.
      * @param _incentivizedActionId The incentivized action identifier.
      * @return ip The address of the incentive provider.
      * @return startTimestamp Timestamp from which incentives start.
