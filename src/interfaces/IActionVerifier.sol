@@ -5,24 +5,26 @@ pragma solidity ^0.8.0;
 /// @notice Interface for processing/verifying  actions.
 interface IActionVerifier {
     /**
-     * @notice Processes market creation by validating the provided parameters.
-     * @param _marketHash A unique hash identifier for the market.
-     * @param _marketParams Encoded parameters required for market creation.
-     * @return validMarketCreation Returns true if the market creation is valid.
+     * @notice Processes incentivized action creation by validating the provided parameters.
+     * @param _incentivizedActionId A unique hash identifier for the incentivized action in the incentive locker.
+     * @param _actionParams Arbitrary parameters defining the action.
+     * @param _ip The address placing the incentives for this action.
+     * @return valid Returns true if the market creation is valid.
      */
-    function processIAMCreation(bytes32 _marketHash, bytes memory _marketParams)
+    function processIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
         external
-        returns (bool validMarketCreation);
+        returns (bool valid);
 
     /**
      * @notice Processes a claim by validating the provided parameters.
-     * @param _ap The address of the Action Provider.
-     * @param _incentiveId The identifier used by the Incentive Locker for the claim.
+     * @param _ap The address of the action provider.
+     * @param _incentivizedActionId The identifier used by the incentive locker for the claim.
      * @param _claimParams Encoded parameters required for processing the claim.
-     * @return validClaim Returns true if the claim is valid.
-     * @return ratioOwed A ratio determining the payment amount upon claim.
+     * @return valid Returns true if the claim is valid.
+     * @return incentives The incentive tokens to pay out to the AP.
+     * @return incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
      */
-    function verifyClaim(address _ap, bytes32 _incentiveId, bytes memory _claimParams)
+    function processClaim(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
         external
-        returns (bool validClaim, uint64 ratioOwed);
+        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed);
 }
