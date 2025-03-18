@@ -2,15 +2,15 @@
 pragma solidity ^0.8.0;
 
 import {IActionVerifier} from "../../interfaces/IActionVerifier.sol";
-import {UmaMerkleOracle} from "../oracle/UmaMerkleOracle.sol";
+import {UmaMerkleOracleBase} from "../oracle/UmaMerkleOracleBase.sol";
 import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
 /**
- * @title UmaMultiplierActionVerifier
- * @notice This contract extends UmaMerkleOracle to verify and store Merkle roots related to Uniswap LP claims.
+ * @title UmaActionVerifier
+ * @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots related to Uniswap LP claims.
  *         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
  */
-contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
+contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /**
      * @notice Action parameters for this action verifier.
      * @param ipfsCID The link to the ipfs doc which store an action description and more info
@@ -66,7 +66,7 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
     mapping(bytes32 => mapping(bytes32 => bool)) public incentivizedActionIdToMerkleLeafToClaimed;
 
     /**
-     * @notice Constructs the UmaMultiplierActionVerifier.
+     * @notice Constructs the UmaActionVerifier.
      * @param _owner The initial owner of the contract.
      * @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
      * @param _incentiveLocker The address of the IncentiveLocker contract.
@@ -84,7 +84,7 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
         uint64 _assertionLiveness,
         address _uniV3Factory
     )
-        UmaMerkleOracle(
+        UmaMerkleOracleBase(
             _owner,
             _optimisticOracleV3,
             _incentiveLocker,
@@ -161,7 +161,7 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
 
     /**
      * @notice Internal hook that handles the resolution logic for a truthful assertion.
-     * @dev Called by `_processAssertionResolution` in the parent UmaMerkleOracle contract.
+     * @dev Called by `_processAssertionResolution` in the parent UmaMerkleOracleBase contract.
      * @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
      */
     function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal override {
@@ -178,7 +178,7 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
 
     /**
      * @notice Internal hook that handles dispute logic if an assertion is disputed.
-     * @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracle contract.
+     * @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracleBase contract.
      * @param _assertionId The ID of the disputed assertion in UMA.
      */
     function _processAssertionDispute(bytes32 _assertionId) internal override {}

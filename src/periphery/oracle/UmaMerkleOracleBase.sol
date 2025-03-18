@@ -11,17 +11,17 @@ import {SafeTransferLib} from "../../../lib/solmate/src/utils/SafeTransferLib.so
 import {AncillaryData} from "../../libraries/AncillaryData.sol";
 
 /**
- * @title UmaMerkleOracle
+ * @title UmaMerkleOracleBase
  * @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
  *         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
  *         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
  * @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
  *      and validating merkle roots for incentive claims.
  */
-abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
+abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
     using SafeTransferLib for ERC20;
 
-    /// @notice The Optimistic Oracle V3 interface used for assertions.
+    /// @notice The UMA Optimistic Oracle V3 used for assertions.
     OptimisticOracleV3Interface public immutable oo;
     /// @notice The default identifier used by the Optimistic Oracle.
     bytes32 public immutable defaultIdentifier;
@@ -102,10 +102,6 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     /// @notice Error thrown when a function is called by an address other than the Optimistic Oracle.
     error UnauthorizedCallbackInvoker();
 
-    // ===========================
-    // ======== MODIFIERS =======
-    // ===========================
-
     /**
      * @notice Ensures that only UMA's Optimistic Oracle can invoke the modified function.
      */
@@ -115,7 +111,7 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
     }
 
     /**
-     * @notice Deploys the UmaMerkleOracle contract.
+     * @notice Deploys the UmaMerkleOracleBase contract.
      * @param _owner The initial owner of the contract.
      * @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
      * @param _incentiveLocker The address of the IncentiveLocker contract.
@@ -163,11 +159,12 @@ abstract contract UmaMerkleOracle is Ownable2Step, OptimisticOracleV3CallbackRec
      */
     function assertMerkleRoot(bytes32 _incentivizedActionId, bytes32 _merkleRoot, uint256 _bondAmount)
         external
+        virtual
         returns (bytes32 assertionId)
     {
         // Retrieve data from the IncentiveLocker for this incentive ID.
-        (address ip,,,, address actionVerifier, bytes memory actionParams) =
-            incentiveLocker.incentivizedActionIdToIAS(_incentivizedActionId);
+        (, address ip, address actionVerifier, bytes memory actionParams) =
+            incentiveLocker.getIncentivizedActionVerifierAndParams(_incentivizedActionId);
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(msg.sender == delegatedAsserter || msg.sender == ip, UnauthorizedAsserter());
