@@ -1,27 +1,105 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IncentiveLockerBase} from "../base/IncentiveLockerBase.sol";
+import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
+enum DistributionPolicy {
+    IMMUTABLE,
+    ADD_ONLY,
+    REFUNDABLE
+}
+
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
 /// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
-contract IncentiveLocker is IncentiveLockerBase {
+contract IncentiveLocker is Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
+    /// @notice Address of the PointsFactory contract.
+    address public immutable pointsFactory;
+
+    /// @notice Incentivized Action State - The state of an incentivized action on Royco
+    /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
+    struct IAS {
+        // Pack the struct for gas op
+        address ip;
+        uint32 startTimestamp;
+        uint32 endTimestamp;
+        uint64 protocolFee;
+        address actionVerifier;
+        bytes actionParams;
+        address[] incentivesOffered;
+        mapping(address => uint256) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
+    }
+
+    /// @notice Mapping from incentive ID to incentive information.
+    mapping(bytes32 => IAS) public incentivizedActionIdToIAS;
+
+    /// @notice Mapping of fee claimants to accrued fees for each incentive token.
+    mapping(address => mapping(address => uint256)) public feeClaimantToTokenToAmount;
+
+    /// @notice Protocol fee rate (1e18 equals 100% fee).
+    uint64 public protocolFee;
+
+    /// @notice Address allowed to claim protocol fees.
+    address public protocolFeeClaimant;
+
+    /// @notice The number of incentive IDs the locker has minted so far
+    uint256 public numIncentivizedActionIds;
+
+    /// @notice Emitted when incentives are added to the locker.
+    /// @param incentivizedActionId Unique identifier for the incentive.
+    /// @param actionVerifier The address verifying the incentive conditions.
+    /// @param ip The address of the incentive provider.
+    /// @param incentivesOffered Array of incentive token addresses.
+    /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
+    event IncentivizedActionAdded(
+        bytes32 indexed incentivizedActionId,
+        address indexed ip,
+        address indexed actionVerifier,
+        bytes actionParams,
+        uint32 startTimestamp,
+        uint32 endTimestamp,
+        uint64 protocolFee,
+        address[] incentivesOffered,
+        uint256[] incentiveAmountsOffered
+    );
+
+    event IncentivesClaimed(
+        bytes32 indexed incentivizedActionId,
+        address indexed ap,
+        uint256[] incentiveAmountsPaid,
+        uint256[] protocolFeesPaid
+    );
+
+    /// @param claimant The address that claimed the fees
+    /// @param incentive The address of the incentive claimed as a fee
+    /// @param amount The amount of fees claimed
+    event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
+
+    error ArrayLengthMismatch();
+    error TokenDoesNotExist();
+    error InvalidPointsProgram();
+    error OfferCannotContainDuplicateIncentives();
+    error InvalidIncentivizedAction();
+    error InvalidClaim();
+
     /// @notice Initializes the IncentiveLocker contract.
-    /// @param _owner Address of the Incentive Locker owner.
+    /// @param _owner Address of the contract owner.
     /// @param _pointsFactory Address of the PointsFactory contract.
     /// @param _protocolFee Protocol fee rate (1e18 equals 100% fee).
-    constructor(address _owner, address _pointsFactory, uint64 _protocolFee)
-        IncentiveLockerBase(_owner, _pointsFactory, _protocolFee)
-    {}
+    constructor(address _owner, address _pointsFactory, uint64 _protocolFee) Ownable(_owner) {
+        // Set the initial contract state
+        pointsFactory = _pointsFactory;
+        protocolFeeClaimant = _owner;
+        protocolFee = _protocolFee;
+    }
 
     /// @notice Adds incentives to the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
@@ -37,7 +115,7 @@ contract IncentiveLocker is IncentiveLockerBase {
         uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
-    ) external override requiresAuth returns (bytes32 incentivizedActionId) {
+    ) external onlyOwner returns (bytes32 incentivizedActionId) {
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
@@ -91,11 +169,7 @@ contract IncentiveLocker is IncentiveLockerBase {
     /// @notice The address of the Action Provider to claim incentives for.
     /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
     /// @param _claimParams Claim parameters used by the AV to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
-        public
-        override
-        requiresAuth
-    {
+    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public {
         // Retrieve the incentive information.
         IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
 
@@ -118,7 +192,6 @@ contract IncentiveLocker is IncentiveLockerBase {
     /// @param _claimParams Array of claim parameters for each IA ID used by the AV to process the claim.
     function claimIncentives(address _ap, bytes32[] memory _incentivizedActionIds, bytes[] memory _claimParams)
         external
-        override
     {
         uint256 numClaims = _incentivizedActionIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
@@ -126,6 +199,129 @@ contract IncentiveLocker is IncentiveLockerBase {
         for (uint256 i = 0; i < numClaims; ++i) {
             claimIncentives(_ap, _incentivizedActionIds[i], _claimParams[i]);
         }
+    }
+
+    /// @notice Claims accrued fees for a given incentive token.
+    /// @param _incentiveToken The address of the incentive token.
+    /// @param _to The recipient address for the claimed fees.
+    function claimFees(address _incentiveToken, address _to) external {
+        uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
+        delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
+        ERC20(_incentiveToken).safeTransfer(_to, amount);
+        emit FeesClaimed(msg.sender, _incentiveToken, amount);
+    }
+
+    /**
+     * @notice Returns the state for the specified incentivized action.
+     * @param _incentivizedActionId The incentivized action identifier.
+     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @return ip The address of the incentive provider.
+     * @return startTimestamp Timestamp from which incentives start.
+     * @return endTimestamp Timestamp when incentives stop.
+     * @return storedProtocolFee The protocol fee rate stored for this action.
+     * @return actionVerifier The address of the action verifier.
+     * @return actionParams The parameters describing the action.
+     * @return incentivesOffered Array of offered incentive token addresses.
+     * @return incentiveAmountsOffered Array of amounts offered per token.
+     */
+    function getIncentivizedActionState(bytes32 _incentivizedActionId)
+        external
+        view
+        returns (
+            bool exists,
+            address ip,
+            uint32 startTimestamp,
+            uint32 endTimestamp,
+            uint64 storedProtocolFee,
+            address actionVerifier,
+            bytes memory actionParams,
+            address[] memory incentivesOffered,
+            uint256[] memory incentiveAmountsOffered
+        )
+    {
+        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+
+        ip = ias.ip;
+        exists = ip != address(0) ? true : false;
+        if (exists) {
+            startTimestamp = ias.startTimestamp;
+            endTimestamp = ias.endTimestamp;
+            storedProtocolFee = ias.protocolFee;
+            actionVerifier = ias.actionVerifier;
+            actionParams = ias.actionParams;
+            incentivesOffered = ias.incentivesOffered;
+            incentiveAmountsOffered = new uint256[](incentivesOffered.length);
+            for (uint256 i = 0; i < incentivesOffered.length; i++) {
+                incentiveAmountsOffered[i] = ias.incentiveAmountsOffered[incentivesOffered[i]];
+            }
+        }
+    }
+
+    /**
+     * @notice Returns the IP and duration for the specified incentivized action.
+     * @param _incentivizedActionId The incentivized action identifier.
+     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @return ip The address of the incentive provider.
+     * @return startTimestamp Timestamp from which incentives start.
+     * @return endTimestamp Timestamp when incentives stop.
+     */
+    function getIncentivizedActionDuration(bytes32 _incentivizedActionId)
+        external
+        view
+        returns (bool exists, address ip, uint32 startTimestamp, uint32 endTimestamp)
+    {
+        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+
+        ip = ias.ip;
+        exists = ip != address(0) ? true : false;
+        if (exists) {
+            startTimestamp = ias.startTimestamp;
+            endTimestamp = ias.endTimestamp;
+        }
+    }
+
+    /**
+     * @notice Returns the IP, action verifier, and action params for the specified incentivized action.
+     * @param _incentivizedActionId The incentivized action identifier.
+     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @return ip The address of the incentive provider.
+     * @return actionVerifier The address of the action verifier.
+     * @return actionParams The parameters describing the action.
+     */
+    function getIncentivizedActionVerifierAndParams(bytes32 _incentivizedActionId)
+        external
+        view
+        returns (bool exists, address ip, address actionVerifier, bytes memory actionParams)
+    {
+        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+
+        ip = ias.ip;
+        exists = ip != address(0) ? true : false;
+        if (exists) {
+            actionVerifier = ias.actionVerifier;
+            actionParams = ias.actionParams;
+        }
+    }
+
+    /**
+     * @notice Returns the duration for the specified incentivized action.
+     * @param _incentivizedActionId The incentivized action identifier.
+     * @return exists Boolean indicating whether or not the incentivized action exists.
+     */
+    function incentivizedActionExists(bytes32 _incentivizedActionId) external view returns (bool exists) {
+        exists = incentivizedActionIdToIAS[_incentivizedActionId].ip != address(0) ? true : false;
+    }
+
+    /// @notice Sets the protocol fee recipient.
+    /// @param _protocolFeeClaimant Address allowed to claim protocol fees.
+    function setProtocolFeeClaimant(address _protocolFeeClaimant) external onlyOwner {
+        protocolFeeClaimant = _protocolFeeClaimant;
+    }
+
+    /// @notice Sets the protocol fee rate.
+    /// @param _protocolFee The new protocol fee rate (1e18 equals 100% fee).
+    function setProtocolFee(uint64 _protocolFee) external onlyOwner {
+        protocolFee = _protocolFee;
     }
 
     /// @notice Pulls incentives from the incentive provider.

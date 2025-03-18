@@ -16,6 +16,8 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
      * @param ipfsCID The link to the ipfs doc which store an action description and more info
      */
     struct ActionParams {
+        address orderbook;
+        bytes4 selector;
         bytes32 ipfsCID;
     }
 
