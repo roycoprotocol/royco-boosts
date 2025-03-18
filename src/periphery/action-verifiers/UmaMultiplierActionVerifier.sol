@@ -94,6 +94,12 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
         UNISWAP_V3_FACTORY = _uniV3Factory;
     }
 
+    /// @dev Only the IncentiveLocker can call this function
+    modifier onlyIncentiveLocker() {
+        require(msg.sender == address(incentiveLocker));
+        _;
+    }
+
     /**
      * @notice Processes incentivized action creation by validating the provided parameters.
      * @param _incentivizedActionId A unique hash identifier for the incentivized action in the incentive locker.
@@ -104,9 +110,9 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
     function processIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
         external
         override
+        onlyIncentiveLocker
         returns (bool valid)
     {
-        require(msg.sender == address(incentiveLocker));
         // Todo: Check that the params are valid for this AV
         valid = true;
     }
@@ -123,6 +129,7 @@ contract UmaMultiplierActionVerifier is IActionVerifier, UmaMerkleOracle {
     function processClaim(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams)
         external
         override
+        onlyIncentiveLocker
         returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
