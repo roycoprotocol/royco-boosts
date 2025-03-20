@@ -9,9 +9,10 @@ import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
 enum DistributionPolicy {
-    IMMUTABLE,
-    ADD_ONLY,
-    REFUNDABLE
+    IMMUTABLE, // Incentives can't be modified once placed in the incentive locker
+    MUTABLE, // Incentives can be increased and decreased once placed in the incentive locker
+    MUTABLE_ADD_ONLY // Incentives can only be increased once placed in the incentive locker
+
 }
 
 /// @title IncentiveLocker
@@ -31,24 +32,25 @@ contract IncentiveLocker is Ownable2Step {
         address ip;
         uint32 startTimestamp;
         uint32 endTimestamp;
+        address protocolFeeClaimant;
         uint64 protocolFee;
         address actionVerifier;
         bytes actionParams;
         address[] incentivesOffered;
-        mapping(address => uint256) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
+        mapping(address incentive => uint256 amount) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
     }
 
     /// @notice Mapping from incentive ID to incentive information.
-    mapping(bytes32 => IAS) public incentivizedActionIdToIAS;
+    mapping(bytes32 id => IAS state) public incentivizedActionIdToIAS;
 
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
-    mapping(address => mapping(address => uint256)) public feeClaimantToTokenToAmount;
+    mapping(address claimant => mapping(address token => uint256 amountOwed)) public feeClaimantToTokenToAmount;
 
     /// @notice Protocol fee rate (1e18 equals 100% fee).
-    uint64 public protocolFee;
+    uint64 public defaultProtocolFee;
 
     /// @notice Address allowed to claim protocol fees.
-    address public protocolFeeClaimant;
+    address public defaultProtocolFeeClaimant;
 
     /// @notice The number of incentive IDs the locker has minted so far
     uint256 public numIncentivizedActionIds;
@@ -66,7 +68,7 @@ contract IncentiveLocker is Ownable2Step {
         bytes actionParams,
         uint32 startTimestamp,
         uint32 endTimestamp,
-        uint64 protocolFee,
+        uint64 defaultProtocolFee,
         address[] incentivesOffered,
         uint256[] incentiveAmountsOffered
     );
@@ -93,12 +95,15 @@ contract IncentiveLocker is Ownable2Step {
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
     /// @param _pointsFactory Address of the PointsFactory contract.
-    /// @param _protocolFee Protocol fee rate (1e18 equals 100% fee).
-    constructor(address _owner, address _pointsFactory, uint64 _protocolFee) Ownable(_owner) {
+    /// @param _defaultProtocolFeeClaimant Default address allowed to claim protocol fees.
+    /// @param _defaultProtocolFee Default protocol fee rate (1e18 equals 100% fee).
+    constructor(address _owner, address _pointsFactory, address _defaultProtocolFeeClaimant, uint64 _defaultProtocolFee)
+        Ownable(_owner)
+    {
         // Set the initial contract state
         pointsFactory = _pointsFactory;
-        protocolFeeClaimant = _owner;
-        protocolFee = _protocolFee;
+        defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
+        defaultProtocolFee = _defaultProtocolFee;
     }
 
     /// @notice Adds incentives to the incentive locker and returns it's identifier.
@@ -139,7 +144,7 @@ contract IncentiveLocker is Ownable2Step {
         IAS storage ias = incentivizedActionIdToIAS[incentivizedActionId];
         ias.ip = msg.sender;
         ias.startTimestamp = _startTimestamp;
-        ias.protocolFee = protocolFee;
+        ias.protocolFee = defaultProtocolFee;
         ias.actionVerifier = _actionVerifier;
         ias.endTimestamp = _endTimestamp;
         ias.actionParams = _actionParams;
@@ -167,27 +172,6 @@ contract IncentiveLocker is Ownable2Step {
 
     /// @notice Claims incentives for given incentive IDs.
     /// @notice The address of the Action Provider to claim incentives for.
-    /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
-    /// @param _claimParams Claim parameters used by the AV to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public {
-        // Retrieve the incentive information.
-        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
-
-        // Verify the claim via the action verifier.
-        (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
-            IActionVerifier(ias.actionVerifier).processClaim(_ap, _incentivizedActionId, _claimParams);
-        require(valid, InvalidClaim());
-
-        // Process each incentive claim, calculating amounts and fees.
-        (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
-            _remitIncentivesAndFees(ias, _ap, incentives, incentiveAmountsOwed);
-
-        // Emit the incentives claimed event.
-        emit IncentivesClaimed(_incentivizedActionId, _ap, incentiveAmountsPaid, protocolFeesPaid);
-    }
-
-    /// @notice Claims incentives for given incentive IDs.
-    /// @notice The address of the Action Provider to claim incentives for.
     /// @param _incentivizedActionIds Array of incentivized action identifier to claim incentives from.
     /// @param _claimParams Array of claim parameters for each IA ID used by the AV to process the claim.
     function claimIncentives(address _ap, bytes32[] memory _incentivizedActionIds, bytes[] memory _claimParams)
@@ -199,6 +183,31 @@ contract IncentiveLocker is Ownable2Step {
         for (uint256 i = 0; i < numClaims; ++i) {
             claimIncentives(_ap, _incentivizedActionIds[i], _claimParams[i]);
         }
+    }
+
+    /// @notice Claims incentives for given incentive IDs.
+    /// @notice The address of the Action Provider to claim incentives for.
+    /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
+    /// @param _claimParams Claim parameters used by the AV to process the claim.
+    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public {
+        // Retrieve the incentive information.
+        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+
+        // Verify the claim via the action verifier.
+        (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
+            IActionVerifier(ias.actionVerifier).processClaim(_ap, _incentivizedActionId, _claimParams);
+        require(valid, InvalidClaim());
+
+        // Get the protocol fee claimant for this IAS
+        address protocolFeeClaimant = ias.protocolFeeClaimant;
+        if (protocolFeeClaimant == address(0)) protocolFeeClaimant = defaultProtocolFeeClaimant;
+
+        // Process each incentive claim, calculating amounts and fees.
+        (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
+            _remitIncentivesAndFees(ias, _ap, protocolFeeClaimant, incentives, incentiveAmountsOwed);
+
+        // Emit the incentives claimed event.
+        emit IncentivesClaimed(_incentivizedActionId, _ap, incentiveAmountsPaid, protocolFeesPaid);
     }
 
     /// @notice Claims accrued fees for a given incentive token.
@@ -218,7 +227,8 @@ contract IncentiveLocker is Ownable2Step {
      * @return ip The address of the incentive provider.
      * @return startTimestamp Timestamp from which incentives start.
      * @return endTimestamp Timestamp when incentives stop.
-     * @return storedProtocolFee The protocol fee rate stored for this action.
+     * @return protocolFee The protocol fee rate for this action.
+     * @return protocolFeeClaimant The protocol fee recipient.
      * @return actionVerifier The address of the action verifier.
      * @return actionParams The parameters describing the action.
      * @return incentivesOffered Array of offered incentive token addresses.
@@ -232,7 +242,8 @@ contract IncentiveLocker is Ownable2Step {
             address ip,
             uint32 startTimestamp,
             uint32 endTimestamp,
-            uint64 storedProtocolFee,
+            uint64 protocolFee,
+            address protocolFeeClaimant,
             address actionVerifier,
             bytes memory actionParams,
             address[] memory incentivesOffered,
@@ -246,7 +257,9 @@ contract IncentiveLocker is Ownable2Step {
         if (exists) {
             startTimestamp = ias.startTimestamp;
             endTimestamp = ias.endTimestamp;
-            storedProtocolFee = ias.protocolFee;
+            protocolFee = ias.protocolFee;
+            protocolFeeClaimant =
+                ias.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ias.protocolFeeClaimant;
             actionVerifier = ias.actionVerifier;
             actionParams = ias.actionParams;
             incentivesOffered = ias.incentivesOffered;
@@ -313,15 +326,32 @@ contract IncentiveLocker is Ownable2Step {
     }
 
     /// @notice Sets the protocol fee recipient.
-    /// @param _protocolFeeClaimant Address allowed to claim protocol fees.
-    function setProtocolFeeClaimant(address _protocolFeeClaimant) external onlyOwner {
-        protocolFeeClaimant = _protocolFeeClaimant;
+    /// @param _defaultProtocolFeeClaimant Address allowed to claim protocol fees.
+    function setDefaultProtocolFeeClaimant(address _defaultProtocolFeeClaimant) external onlyOwner {
+        defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
+    }
+
+    /// @notice Sets the protocol fee recipient.
+    /// @param _incentivizedActionId The incentivized action identifier.
+    /// @param _protocolFeeClaimant Address allowed to claim protocol fees for the specified IA.
+    function setProtocolFeeClaimantForIA(bytes32 _incentivizedActionId, address _protocolFeeClaimant)
+        external
+        onlyOwner
+    {
+        incentivizedActionIdToIAS[_incentivizedActionId].protocolFeeClaimant = _protocolFeeClaimant;
     }
 
     /// @notice Sets the protocol fee rate.
-    /// @param _protocolFee The new protocol fee rate (1e18 equals 100% fee).
-    function setProtocolFee(uint64 _protocolFee) external onlyOwner {
-        protocolFee = _protocolFee;
+    /// @param _defaultProtocolFee The new default protocol fee rate (1e18 equals 100% fee).
+    function setDefaultProtocolFee(uint64 _defaultProtocolFee) external onlyOwner {
+        defaultProtocolFee = _defaultProtocolFee;
+    }
+
+    /// @notice Sets the protocol fee recipient.
+    /// @param _incentivizedActionId The incentivized action identifier.
+    /// @param _protocolFee The new protocol fee rate for the IA (1e18 equals 100% fee).
+    function setProtocolFeeForIA(bytes32 _incentivizedActionId, uint64 _protocolFee) external onlyOwner {
+        incentivizedActionIdToIAS[_incentivizedActionId].protocolFee = _protocolFee;
     }
 
     /// @notice Pulls incentives from the incentive provider.
@@ -366,6 +396,7 @@ contract IncentiveLocker is Ownable2Step {
     ///      and pushes the calculated amounts to the _ap while accounting for fees.
     /// @param _ias Storage reference to the incentive information.
     /// @param _ap The address of the AP claiming the incentives.
+    /// @param _protocolFeeClaimant The protocol fee recipient
     /// @param _incentives The incentive tokens to pay out to the AP.
     /// @param _incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
     /// @return incentiveAmountsPaid Array of net incentive amounts paid to the AP.
@@ -373,6 +404,7 @@ contract IncentiveLocker is Ownable2Step {
     function _remitIncentivesAndFees(
         IAS storage _ias,
         address _ap,
+        address _protocolFeeClaimant,
         address[] memory _incentives,
         uint256[] memory _incentiveAmountsOwed
     ) internal returns (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) {
@@ -400,7 +432,9 @@ contract IncentiveLocker is Ownable2Step {
             incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i];
 
             // Push incentives to the AP and account for fees.
-            _pushIncentivesAndAccountFees(incentive, _ap, incentiveAmountsPaid[i], protocolFeesPaid[i], ip);
+            _pushIncentivesAndAccountFees(
+                incentive, _ap, _protocolFeeClaimant, incentiveAmountsPaid[i], protocolFeesPaid[i], ip
+            );
         }
     }
 
@@ -408,17 +442,18 @@ contract IncentiveLocker is Ownable2Step {
     /// @param incentive The address of the incentive token.
     /// @param to Recipient address for the incentive.
     /// @param incentiveAmount Net incentive amount to be transferred.
-    /// @param protocolFeeAmount Protocol fee amount.
+    /// @param defaultProtocolFeeAmount Protocol fee amount.
     /// @param ip Address of the incentive provider.
     function _pushIncentivesAndAccountFees(
         address incentive,
         address to,
+        address protocolFeeClaimant,
         uint256 incentiveAmount,
-        uint256 protocolFeeAmount,
+        uint256 defaultProtocolFeeAmount,
         address ip
     ) internal {
         // Take fees
-        _accountFee(protocolFeeClaimant, incentive, protocolFeeAmount, ip);
+        _accountFee(protocolFeeClaimant, incentive, defaultProtocolFeeAmount, ip);
 
         // Push incentives to AP
         if (PointsFactory(pointsFactory).isPointsProgram(incentive)) {

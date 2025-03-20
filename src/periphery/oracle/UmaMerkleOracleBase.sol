@@ -51,7 +51,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     }
 
     /// @notice Maps a UMA assertion ID to its corresponding `MerkleRootAssertion`.
-    mapping(bytes32 => MerkleRootAssertion) public assertionIdToMerkleRootAssertion;
+    mapping(bytes32 id => MerkleRootAssertion assertion) public assertionIdToMerkleRootAssertion;
 
     /**
      * @notice Emitted when a Merkle root is asserted.

@@ -51,19 +51,14 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     error InvalidSignature();
 
     /**
-     * @notice The Uniswap V3 Factory address used to validate official pools.
-     */
-    address public immutable UNISWAP_V3_FACTORY;
-
-    /**
      * @notice Maps an incentivizedActionId to its Merkle root. A zero value indicates no root has been set.
      */
-    mapping(bytes32 => bytes32) public incentivizedActionIdToMerkleRoot;
+    mapping(bytes32 id => bytes32 merkleRoot) public incentivizedActionIdToMerkleRoot;
 
     /**
      * @notice Tracks which leaves have already been claimed for a given incentivizedActionId.
      */
-    mapping(bytes32 => mapping(bytes32 => bool)) public incentivizedActionIdToMerkleLeafToClaimed;
+    mapping(bytes32 id => mapping(bytes32 merkleLeaf => bool claimed)) public incentivizedActionIdToMerkleLeafToClaimed;
 
     /**
      * @notice Constructs the UmaActionVerifier.
@@ -73,7 +68,6 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
      * @param _delegatedAsserter The initial delegated asserter address.
      * @param _bondCurrency The ERC20 token address used for bonding in UMA.
      * @param _assertionLiveness The liveness (in seconds) for UMA assertions.
-     * @param _uniV3Factory The address of the Uniswap V3 Factory contract.
      */
     constructor(
         address _owner,
@@ -81,8 +75,7 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         address _incentiveLocker,
         address _delegatedAsserter,
         address _bondCurrency,
-        uint64 _assertionLiveness,
-        address _uniV3Factory
+        uint64 _assertionLiveness
     )
         UmaMerkleOracleBase(
             _owner,
@@ -92,9 +85,7 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
             _bondCurrency,
             _assertionLiveness
         )
-    {
-        UNISWAP_V3_FACTORY = _uniV3Factory;
-    }
+    {}
 
     /// @dev Only the IncentiveLocker can call this function
     modifier onlyIncentiveLocker() {
@@ -111,6 +102,7 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
      */
     function processIncentivizedAction(bytes32 _incentivizedActionId, bytes memory _actionParams, address _ip)
         external
+        view
         override
         onlyIncentiveLocker
         returns (bool valid)

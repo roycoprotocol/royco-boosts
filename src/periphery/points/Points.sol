@@ -29,6 +29,7 @@ contract Points is Ownable2Step {
     //////////////////////////////////////////////////////////////*/
     event Award(address indexed to, uint256 indexed amount, address indexed awardedBy);
     event AllowedIPsAdded(address[] ip);
+
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -43,7 +44,7 @@ contract Points is Ownable2Step {
     /// @dev We track all points logic using base 1
     uint256 public decimals;
     /// @dev Track which IncentiveLocker IPs are allowed to mint
-    mapping(address => bool) public allowedIPs;
+    mapping(address ip => bool allowed) public allowedIPs;
 
     /*//////////////////////////////////////////////////////////////
                               POINTS AUTH
