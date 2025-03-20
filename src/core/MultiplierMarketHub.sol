@@ -5,7 +5,6 @@ import {Ownable, Ownable2Step} from "../../lib/openzeppelin-contracts/contracts/
 import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
-import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 import {IncentiveLocker} from "../core/IncentiveLocker.sol";
 

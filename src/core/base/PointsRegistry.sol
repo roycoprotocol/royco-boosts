@@ -60,7 +60,7 @@ abstract contract PointsRegistry {
     error OnlyPointsProgramOwner();
 
     /// @notice Thrown when an attempt to spend points exceeds the available spending cap.
-    /// @param capacityLeft The remaining spending cap available.
+    /// @param capacityLeft The remaining spending capacity for this IP.
     error SpendCapExceeded(uint256 capacityLeft);
 
     /// @notice Creates a new points program.
@@ -119,19 +119,26 @@ abstract contract PointsRegistry {
         emit SpendCapsUpdated(_pointsId, _ips, _spendCaps);
     }
 
+    /// @param _pointsId The unique identifier of the points program.
+    /// @return exists Boolean indicating if the specified points program exists.
+    function isPointsProgram(address _pointsId) public view returns (bool exists) {
+        exists = pointsIdToProgram[_pointsId].owner != address(0);
+    }
+
     /// @notice Deducts points from an IP's spending cap when points are spent.
     /// @dev Ensures that the spending cap is not exceeded, then reduces the available cap and emits a spend event.
     /// @param _pointsId The unique identifier of the points program.
     /// @param _ip The IP address attempting to spend points.
     /// @param _amount The amount of points to spend.
-    function pointsSpent(address _pointsId, address _ip, uint256 _amount) internal {
-        // Ensure the cap isn't exceeded by this attempt to spend points
+    function _pointsSpent(address _pointsId, address _ip, uint256 _amount) internal {
         PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
-        require(pointsProgram.ipToSpendCap[_ip] >= _amount, SpendCapExceeded(pointsProgram.ipToSpendCap[_ip]));
-
-        // Mark these points as spent
-        pointsProgram.ipToSpendCap[_ip] -= _amount;
-
+        // Check if the IP isn't the owner
+        if (pointsProgram.owner != _ip) {
+            // Ensure the cap isn't exceeded by the IPs attempt to spend points
+            require(pointsProgram.ipToSpendCap[_ip] >= _amount, SpendCapExceeded(pointsProgram.ipToSpendCap[_ip]));
+            // Mark these points as spent
+            pointsProgram.ipToSpendCap[_ip] -= _amount;
+        }
         // Emit spend event
         emit PointsSpent(_pointsId, _ip, _amount);
     }
@@ -141,7 +148,7 @@ abstract contract PointsRegistry {
     /// @param _pointsId The unique identifier of the points program.
     /// @param _recipient The address receiving the awarded points.
     /// @param _amount The amount of points awarded.
-    function award(address _pointsId, address _recipient, uint256 _amount) internal {
+    function _award(address _pointsId, address _recipient, uint256 _amount) internal {
         emit Award(_pointsId, _recipient, _amount);
     }
 }

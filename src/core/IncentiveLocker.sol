@@ -5,7 +5,6 @@ import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contrac
 import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
-import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
 import {PointsRegistry} from "./base/PointsRegistry.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
@@ -22,9 +21,6 @@ enum DistributionPolicy {
 contract IncentiveLocker is PointsRegistry, Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
-
-    /// @notice Address of the PointsFactory contract.
-    address public immutable pointsFactory;
 
     /// @notice Incentivized Action State - The state of an incentivized action on Royco
     /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
@@ -87,21 +83,16 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
 
     error TokenDoesNotExist();
-    error InvalidPointsProgram();
     error OfferCannotContainDuplicateIncentives();
     error InvalidIncentivizedAction();
     error InvalidClaim();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
-    /// @param _pointsFactory Address of the PointsFactory contract.
     /// @param _defaultProtocolFeeClaimant Default address allowed to claim protocol fees.
     /// @param _defaultProtocolFee Default protocol fee rate (1e18 equals 100% fee).
-    constructor(address _owner, address _pointsFactory, address _defaultProtocolFeeClaimant, uint64 _defaultProtocolFee)
-        Ownable(_owner)
-    {
+    constructor(address _owner, address _defaultProtocolFeeClaimant, uint64 _defaultProtocolFee) Ownable(_owner) {
         // Set the initial contract state
-        pointsFactory = _pointsFactory;
         defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
         defaultProtocolFee = _defaultProtocolFee;
     }
@@ -253,7 +244,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
 
         ip = ias.ip;
-        exists = ip != address(0) ? true : false;
+        exists = ip != address(0);
         if (exists) {
             startTimestamp = ias.startTimestamp;
             endTimestamp = ias.endTimestamp;
@@ -286,7 +277,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
 
         ip = ias.ip;
-        exists = ip != address(0) ? true : false;
+        exists = ip != address(0);
         if (exists) {
             startTimestamp = ias.startTimestamp;
             endTimestamp = ias.endTimestamp;
@@ -309,7 +300,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
 
         ip = ias.ip;
-        exists = ip != address(0) ? true : false;
+        exists = ip != address(0);
         if (exists) {
             actionVerifier = ias.actionVerifier;
             actionParams = ias.actionParams;
@@ -322,7 +313,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
      * @return exists Boolean indicating whether or not the incentivized action exists.
      */
     function incentivizedActionExists(bytes32 _incentivizedActionId) external view returns (bool exists) {
-        exists = incentivizedActionIdToIAS[_incentivizedActionId].ip != address(0) ? true : false;
+        exists = incentivizedActionIdToIAS[_incentivizedActionId].ip != address(0);
     }
 
     /// @notice Sets the protocol fee recipient.
@@ -371,17 +362,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             lastIncentive = incentive;
 
             // Check if incentive is a points program
-            if (PointsFactory(pointsFactory).isPointsProgram(incentive)) {
-                // If points incentive, make sure:
-                // 1. The points factory used to create the program is the same as this RecipeMarketHub's PF
-                // 2. IP placing the offer can award points
-                // 3. Points factory has this RecipeMarketHub marked as a valid RO - can be assumed true
-                if (
-                    pointsFactory != address(Points(incentive).pointsFactory())
-                        || !Points(incentive).allowedIPs(msg.sender)
-                ) {
-                    revert InvalidPointsProgram();
-                }
+            if (isPointsProgram(incentive)) {
+                // Mark the points as spent
+                _pointsSpent(incentive, msg.sender, _incentiveAmounts[i]);
             } else {
                 // Prevent incentive deployment frontrunning
                 if (incentive.code.length == 0) revert TokenDoesNotExist();
@@ -456,25 +439,25 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         _accountFee(protocolFeeClaimant, incentive, defaultProtocolFeeAmount, ip);
 
         // Push incentives to AP
-        if (PointsFactory(pointsFactory).isPointsProgram(incentive)) {
-            Points(incentive).award(to, incentiveAmount, ip);
+        if (isPointsProgram(incentive)) {
+            _award(incentive, to, incentiveAmount);
         } else {
             ERC20(incentive).safeTransfer(to, incentiveAmount);
         }
     }
 
     /// @notice Accounts fees for a recipient.
-    /// @param recipient Address to which fees are credited.
+    /// @param to Address to which fees are credited.
     /// @param incentive The incentive token address.
-    /// @param amount Fee amount to be credited.
+    /// @param feeAmount Fee amount to be credited.
     /// @param ip Address of the incentive provider (used for points programs).
-    function _accountFee(address recipient, address incentive, uint256 amount, address ip) internal {
+    function _accountFee(address to, address incentive, uint256 feeAmount, address ip) internal {
         // Check to see if the incentive is actually a points campaign
-        if (PointsFactory(pointsFactory).isPointsProgram(incentive)) {
+        if (isPointsProgram(incentive)) {
             // Points cannot be claimed and are rather directly awarded
-            Points(incentive).award(recipient, amount, ip);
+            _award(incentive, to, feeAmount);
         } else {
-            feeClaimantToTokenToAmount[recipient][incentive] += amount;
+            feeClaimantToTokenToAmount[to][incentive] += feeAmount;
         }
     }
 }
