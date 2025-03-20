@@ -6,6 +6,7 @@ import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
 import {PointsFactory, Points} from "../periphery/points/PointsFactory.sol";
+import {PointsRegistry} from "./base/PointsRegistry.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
 enum DistributionPolicy {
@@ -18,7 +19,7 @@ enum DistributionPolicy {
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
 /// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
-contract IncentiveLocker is Ownable2Step {
+contract IncentiveLocker is PointsRegistry, Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -85,7 +86,6 @@ contract IncentiveLocker is Ownable2Step {
     /// @param amount The amount of fees claimed
     event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
 
-    error ArrayLengthMismatch();
     error TokenDoesNotExist();
     error InvalidPointsProgram();
     error OfferCannotContainDuplicateIncentives();
