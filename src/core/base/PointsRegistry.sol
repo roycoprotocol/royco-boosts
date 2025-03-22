@@ -19,10 +19,10 @@ abstract contract PointsRegistry {
     }
 
     /// @notice Number of points programs created so far.
-    uint256 numPointsPrograms;
+    uint256 public numPointsPrograms;
 
     /// @notice Mapping from a unique points program identifier to its corresponding program details.
-    mapping(address pointsId => PointsProgram pointsProgram) pointsIdToProgram;
+    mapping(address pointsId => PointsProgram pointsProgram) public pointsIdToProgram;
 
     /// @notice Emitted when a new points program is created.
     /// @param owner The address that created the points program.
@@ -125,12 +125,19 @@ abstract contract PointsRegistry {
         exists = pointsIdToProgram[_pointsId].owner != address(0);
     }
 
+    /// @param _pointsId The unique identifier of the points program.
+    /// @param _ip The incentive provider to return the spend cap for.
+    /// @return spendCap The spend capacity of the IP for this points program.
+    function getIpSpendCap(address _pointsId, address _ip) public view returns (uint256 spendCap) {
+        spendCap = pointsIdToProgram[_pointsId].ipToSpendCap[_ip];
+    }
+
     /// @notice Deducts points from an IP's spending cap when points are spent.
     /// @dev Ensures that the spending cap is not exceeded, then reduces the available cap and emits a spend event.
     /// @param _pointsId The unique identifier of the points program.
     /// @param _ip The IP address attempting to spend points.
     /// @param _amount The amount of points to spend.
-    function _pointsSpent(address _pointsId, address _ip, uint256 _amount) internal {
+    function _spendPoints(address _pointsId, address _ip, uint256 _amount) internal {
         PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
         // Check if the IP isn't the owner
         if (pointsProgram.owner != _ip) {

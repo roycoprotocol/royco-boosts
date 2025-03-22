@@ -8,24 +8,15 @@ import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.s
 import {PointsRegistry} from "./base/PointsRegistry.sol";
 import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
 
-enum DistributionPolicy {
-    IMMUTABLE, // Incentives can't be modified once placed in the incentive locker
-    MUTABLE, // Incentives can be increased and decreased once placed in the incentive locker
-    MUTABLE_ADD_ONLY // Incentives can only be increased once placed in the incentive locker
-
-}
-
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
-/// @dev Utilizes SafeTransferLib for ERC20 operations and FixedPointMathLib for fixed point math.
 contract IncentiveLocker is PointsRegistry, Ownable2Step {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
-    /// @notice Incentivized Action State - The state of an incentivized action on Royco
+    /// @notice Incentive Campaign State - The state of an incentive campaign on Royco
     /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
-    struct IAS {
-        // Pack the struct for gas op
+    struct ICS {
         address ip;
         uint32 startTimestamp;
         uint32 endTimestamp;
@@ -34,11 +25,21 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         address actionVerifier;
         bytes actionParams;
         address[] incentivesOffered;
-        mapping(address incentive => uint256 amount) incentiveAmountsOffered; // Amounts to be allocated to APs + fees (per incentive)
+        // Mapping to keep track of incentive in terms of their logical (1-indexed) indexes in incentivesOffered.
+        // If the index of the incentive is n, the logical index is n + 1.
+        // Hence, a logical index of 0 indicates that the incentive doesn't exist in the array.
+        mapping(address incentive => uint256 logicalIndex) incentiveToLogicalIndex;
+        // Total amounts to be allocated to APs + fees (per incentive)
+        mapping(address incentive => uint256 amount) incentiveToAmountOffered;
+        // Amounts already spent to APs + fees (per incentive)
+        // The value for an incentive in this mapping must always be <= incentiveToAmountOffered[incentive]
+        mapping(address incentive => uint256 amount) incentiveToAmountSpent;
+        // IPs that are whitelisted to add incentives to this incentive campaign
+        mapping(address coIP => bool whitelisted) coIpToWhitelisted;
     }
 
-    /// @notice Mapping from incentive ID to incentive information.
-    mapping(bytes32 id => IAS state) public incentivizedActionIdToIAS;
+    /// @notice Mapping from incentive campaign ID to incentive campaign state.
+    mapping(bytes32 id => ICS state) public incentiveCampaignIdToICS;
 
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address claimant => mapping(address token => uint256 amountOwed)) public feeClaimantToTokenToAmount;
@@ -50,16 +51,16 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     address public defaultProtocolFeeClaimant;
 
     /// @notice The number of incentive IDs the locker has minted so far
-    uint256 public numIncentivizedActionIds;
+    uint256 public numIncentiveCampaignIds;
 
     /// @notice Emitted when incentives are added to the locker.
-    /// @param incentivizedActionId Unique identifier for the incentive.
+    /// @param incentiveCampaignId Unique identifier for the incentive.
     /// @param actionVerifier The address verifying the incentive conditions.
     /// @param ip The address of the incentive provider.
     /// @param incentivesOffered Array of incentive token addresses.
     /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
-    event IncentivizedActionAdded(
-        bytes32 indexed incentivizedActionId,
+    event IncentiveCampaignAdded(
+        bytes32 indexed incentiveCampaignId,
         address indexed ip,
         address indexed actionVerifier,
         bytes actionParams,
@@ -71,7 +72,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     );
 
     event IncentivesClaimed(
-        bytes32 indexed incentivizedActionId,
+        bytes32 indexed incentiveCampaignId,
         address indexed ap,
         uint256[] incentiveAmountsPaid,
         uint256[] protocolFeesPaid
@@ -82,10 +83,13 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param amount The amount of fees claimed
     event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
 
+    error OnlyIP();
     error TokenDoesNotExist();
-    error OfferCannotContainDuplicateIncentives();
-    error InvalidIncentivizedAction();
+    error InvalidIncentiveCampaign();
     error InvalidClaim();
+    error InvalidCampaignInterval();
+    error InvalidAdditionOfIncentives();
+    error InvalidRemovalOfIncentives();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -97,108 +101,188 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         defaultProtocolFee = _defaultProtocolFee;
     }
 
-    /// @notice Adds incentives to the incentive locker and returns it's identifier.
+    /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
     /// @param _startTimestamp The timestamp to start distributing incentives.
     /// @param _endTimestamp The timestamp to stop distributing incentives.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
-    function addIncentivizedAction(
+    function createIncentiveCampaign(
         address _actionVerifier,
         bytes memory _actionParams,
         uint32 _startTimestamp,
         uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
-    ) external onlyOwner returns (bytes32 incentivizedActionId) {
-        uint256 numIncentives = _incentivesOffered.length;
-        // Check that all incentives have a corresponding amount
-        require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
+    ) external returns (bytes32 incentiveCampaignId) {
+        // Check that the duration is valid
+        require(_startTimestamp <= _endTimestamp, InvalidCampaignInterval());
 
-        // Pull the incentives from the IP
-        _pullIncentives(_incentivesOffered, _incentiveAmountsOffered);
-
-        // Compute a unique identifier for this incentivized action
-        incentivizedActionId = keccak256(
+        // Compute a unique identifier for this incentive campaign
+        incentiveCampaignId = keccak256(
             abi.encode(
-                ++numIncentivizedActionIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp
+                ++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp
             )
         );
 
-        // Call hook on the Action Verifier to process the addition of this incentivized action
-        bool valid =
-            IActionVerifier(_actionVerifier).processIncentivizedAction(incentivizedActionId, _actionParams, msg.sender);
-        require(valid, InvalidIncentivizedAction());
+        // Store the incentive campaign information in persistent storage
+        ICS storage ics = incentiveCampaignIdToICS[incentiveCampaignId];
+        // Pull the incentives from the IP
+        _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
+        ics.ip = msg.sender;
+        ics.startTimestamp = _startTimestamp;
+        ics.protocolFee = defaultProtocolFee;
+        ics.actionVerifier = _actionVerifier;
+        ics.endTimestamp = _endTimestamp;
+        ics.actionParams = _actionParams;
 
-        // Store the incentive information in persistent storage
-        IAS storage ias = incentivizedActionIdToIAS[incentivizedActionId];
-        ias.ip = msg.sender;
-        ias.startTimestamp = _startTimestamp;
-        ias.protocolFee = defaultProtocolFee;
-        ias.actionVerifier = _actionVerifier;
-        ias.endTimestamp = _endTimestamp;
-        ias.actionParams = _actionParams;
-        ias.incentivesOffered = _incentivesOffered;
+        // Call hook on the Action Verifier to process the creation of this incentive campaign
+        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
+            incentiveCampaignId, _actionParams, msg.sender
+        );
+        require(valid, InvalidIncentiveCampaign());
 
-        // Set incentives and fees in the ias mapping
-        for (uint256 i = 0; i < numIncentives; ++i) {
-            // Write the incentive amounts offered to the IAS mapping
-            ias.incentiveAmountsOffered[_incentivesOffered[i]] = _incentiveAmountsOffered[i];
-        }
-
-        // Emit event for the addition of the incentivized action
-        emit IncentivizedActionAdded(
-            incentivizedActionId,
+        // Emit event for the addition of the incentive campaign
+        emit IncentiveCampaignAdded(
+            incentiveCampaignId,
             msg.sender,
             _actionVerifier,
             _actionParams,
             _startTimestamp,
             _endTimestamp,
-            ias.protocolFee,
+            ics.protocolFee,
             _incentivesOffered,
             _incentiveAmountsOffered
         );
     }
 
+    function addCoIPs(bytes32 _incentiveCampaignId, address[] memory _coIPs) external {
+        // Only the IP can add coIPs
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+        require(msg.sender == ics.ip, OnlyIP());
+
+        uint256 numIps = _coIPs.length;
+        for (uint256 i = 0; i < _coIPs.length; ++i) {
+            ics.coIpToWhitelisted[_coIPs[i]] = true;
+        }
+    }
+
+    function removeCoIPs(bytes32 _incentiveCampaignId, address[] memory _coIPs) external {
+        // Only the IP can remove coIPs
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+        require(msg.sender == ics.ip, OnlyIP());
+
+        uint256 numIps = _coIPs.length;
+        for (uint256 i = 0; i < _coIPs.length; ++i) {
+            ics.coIpToWhitelisted[_coIPs[i]] = false;
+        }
+    }
+
+    function addIncentives(
+        bytes32 _incentiveCampaignId,
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmountsOffered
+    ) external {
+        // Only the IP can remove incentives
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+        require(msg.sender == ics.ip || ics.coIpToWhitelisted[msg.sender], OnlyIP());
+
+        // Call hook on the Action Verifier to process the addition of this incentive campaign
+        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesAdded(
+            _incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender
+        );
+        require(valid, InvalidAdditionOfIncentives());
+
+        // Pull incentives from the IP and update the ICS accounting
+        _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
+    }
+
+    function removeIncentives(
+        bytes32 _incentiveCampaignId,
+        address[] memory _incentivesToRemove,
+        uint256[] memory _incentiveAmountsToRemove
+    ) external {
+        uint256 numIncentives = _incentivesToRemove.length;
+        // Check that all incentives have a corresponding amount
+        require(numIncentives == _incentiveAmountsToRemove.length, ArrayLengthMismatch());
+
+        // Only the IP can remove incentives
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+        require(msg.sender == ics.ip, OnlyIP());
+
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            address incentive = _incentivesToRemove[i];
+            uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
+
+            // Update ICS accounting
+            // If removing more than is left, assume they want to remove the rest
+            if (incentiveAmountRemoved >= ics.incentiveToAmountOffered[incentive]) {
+                // Get the max amount they can remove
+                incentiveAmountRemoved = ics.incentiveToAmountOffered[incentive];
+                _incentiveAmountsToRemove[i] = incentiveAmountRemoved;
+                // Account for a max refund
+                delete ics.incentiveToAmountOffered[incentive];
+                // Update the ICS array accounting to reflect the removal
+                _removeIncentiveFromCampaign(ics, incentive);
+            } else {
+                // Account for the refund
+                ics.incentiveToAmountOffered[incentive] -= incentiveAmountRemoved;
+            }
+
+            // If the incentive is a token, refund incentives to the IP
+            if (!isPointsProgram(incentive)) {
+                ERC20(incentive).safeTransfer(msg.sender, incentiveAmountRemoved);
+            }
+        }
+
+        // Call hook on the Action Verifier to process the addition of this incentive campaign
+        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesRemoved(
+            _incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender
+        );
+        require(valid, InvalidRemovalOfIncentives());
+    }
+
     /// @notice Claims incentives for given incentive IDs.
     /// @notice The address of the Action Provider to claim incentives for.
-    /// @param _incentivizedActionIds Array of incentivized action identifier to claim incentives from.
+    /// @param _ap The address of the action provider to claim incentives for.
+    /// @param _incentiveCampaignIds Array of incentive campaign identifier to claim incentives from.
     /// @param _claimParams Array of claim parameters for each IA ID used by the AV to process the claim.
-    function claimIncentives(address _ap, bytes32[] memory _incentivizedActionIds, bytes[] memory _claimParams)
+    function claimIncentives(address _ap, bytes32[] memory _incentiveCampaignIds, bytes[] memory _claimParams)
         external
     {
-        uint256 numClaims = _incentivizedActionIds.length;
+        uint256 numClaims = _incentiveCampaignIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
         for (uint256 i = 0; i < numClaims; ++i) {
-            claimIncentives(_ap, _incentivizedActionIds[i], _claimParams[i]);
+            claimIncentives(_ap, _incentiveCampaignIds[i], _claimParams[i]);
         }
     }
 
     /// @notice Claims incentives for given incentive IDs.
     /// @notice The address of the Action Provider to claim incentives for.
-    /// @param _incentivizedActionId Incentivized action identifier to claim incentives from.
+    /// @param _ap The address of the action provider to claim incentives for.
+    /// @param _incentiveCampaignId Incentive campaign identifier to claim incentives from.
     /// @param _claimParams Claim parameters used by the AV to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentivizedActionId, bytes memory _claimParams) public {
+    function claimIncentives(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams) public {
         // Retrieve the incentive information.
-        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
         // Verify the claim via the action verifier.
         (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
-            IActionVerifier(ias.actionVerifier).processClaim(_ap, _incentivizedActionId, _claimParams);
+            IActionVerifier(ics.actionVerifier).processClaim(_ap, _incentiveCampaignId, _claimParams);
         require(valid, InvalidClaim());
 
-        // Get the protocol fee claimant for this IAS
-        address protocolFeeClaimant = ias.protocolFeeClaimant;
+        // Get the protocol fee claimant for this ICS
+        address protocolFeeClaimant = ics.protocolFeeClaimant;
         if (protocolFeeClaimant == address(0)) protocolFeeClaimant = defaultProtocolFeeClaimant;
 
         // Process each incentive claim, calculating amounts and fees.
         (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) =
-            _remitIncentivesAndFees(ias, _ap, protocolFeeClaimant, incentives, incentiveAmountsOwed);
+            _remitIncentivesAndFees(ics, _ap, protocolFeeClaimant, incentives, incentiveAmountsOwed);
 
         // Emit the incentives claimed event.
-        emit IncentivesClaimed(_incentivizedActionId, _ap, incentiveAmountsPaid, protocolFeesPaid);
+        emit IncentivesClaimed(_incentiveCampaignId, _ap, incentiveAmountsPaid, protocolFeesPaid);
     }
 
     /// @notice Claims accrued fees for a given incentive token.
@@ -212,9 +296,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     }
 
     /**
-     * @notice Returns the state for the specified incentivized action.
-     * @param _incentivizedActionId The incentivized action identifier.
-     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @notice Returns the state for the specified incentive campaign.
+     * @param _incentiveCampaignId The incentive campaign identifier.
+     * @return exists Boolean indicating whether or not the incentive campaign exists.
      * @return ip The address of the incentive provider.
      * @return startTimestamp Timestamp from which incentives start.
      * @return endTimestamp Timestamp when incentives stop.
@@ -225,7 +309,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
      * @return incentivesOffered Array of offered incentive token addresses.
      * @return incentiveAmountsOffered Array of amounts offered per token.
      */
-    function getIncentivizedActionState(bytes32 _incentivizedActionId)
+    function getIncentiveCampaignState(bytes32 _incentiveCampaignId)
         external
         view
         returns (
@@ -241,79 +325,105 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             uint256[] memory incentiveAmountsOffered
         )
     {
-        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
-        ip = ias.ip;
+        ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            startTimestamp = ias.startTimestamp;
-            endTimestamp = ias.endTimestamp;
-            protocolFee = ias.protocolFee;
+            startTimestamp = ics.startTimestamp;
+            endTimestamp = ics.endTimestamp;
+            protocolFee = ics.protocolFee;
             protocolFeeClaimant =
-                ias.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ias.protocolFeeClaimant;
-            actionVerifier = ias.actionVerifier;
-            actionParams = ias.actionParams;
-            incentivesOffered = ias.incentivesOffered;
+                ics.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ics.protocolFeeClaimant;
+            actionVerifier = ics.actionVerifier;
+            actionParams = ics.actionParams;
+            incentivesOffered = ics.incentivesOffered;
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
             for (uint256 i = 0; i < incentivesOffered.length; i++) {
-                incentiveAmountsOffered[i] = ias.incentiveAmountsOffered[incentivesOffered[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToAmountOffered[incentivesOffered[i]];
             }
         }
     }
 
     /**
-     * @notice Returns the IP and duration for the specified incentivized action.
-     * @param _incentivizedActionId The incentivized action identifier.
-     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @notice Returns the IP and duration for the specified incentive campaign.
+     * @param _incentiveCampaignId The incentive campaign identifier.
+     * @return exists Boolean indicating whether or not the incentive campaign exists.
      * @return ip The address of the incentive provider.
      * @return startTimestamp Timestamp from which incentives start.
      * @return endTimestamp Timestamp when incentives stop.
      */
-    function getIncentivizedActionDuration(bytes32 _incentivizedActionId)
+    function getIncentiveCampaignDuration(bytes32 _incentiveCampaignId)
         external
         view
         returns (bool exists, address ip, uint32 startTimestamp, uint32 endTimestamp)
     {
-        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
-        ip = ias.ip;
+        ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            startTimestamp = ias.startTimestamp;
-            endTimestamp = ias.endTimestamp;
+            startTimestamp = ics.startTimestamp;
+            endTimestamp = ics.endTimestamp;
         }
     }
 
     /**
-     * @notice Returns the IP, action verifier, and action params for the specified incentivized action.
-     * @param _incentivizedActionId The incentivized action identifier.
-     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @notice Returns the IP, action verifier, and action params for the specified incentive campaign.
+     * @param _incentiveCampaignId The incentive campaign identifier.
+     * @return exists Boolean indicating whether or not the incentive campaign exists.
      * @return ip The address of the incentive provider.
      * @return actionVerifier The address of the action verifier.
      * @return actionParams The parameters describing the action.
      */
-    function getIncentivizedActionVerifierAndParams(bytes32 _incentivizedActionId)
+    function getIncentiveCampaignVerifierAndParams(bytes32 _incentiveCampaignId)
         external
         view
         returns (bool exists, address ip, address actionVerifier, bytes memory actionParams)
     {
-        IAS storage ias = incentivizedActionIdToIAS[_incentivizedActionId];
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
-        ip = ias.ip;
+        ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            actionVerifier = ias.actionVerifier;
-            actionParams = ias.actionParams;
+            actionVerifier = ics.actionVerifier;
+            actionParams = ics.actionParams;
         }
     }
 
     /**
-     * @notice Returns the duration for the specified incentivized action.
-     * @param _incentivizedActionId The incentivized action identifier.
-     * @return exists Boolean indicating whether or not the incentivized action exists.
+     * @notice Returns the incentives and amounts for the specified incentive campaign.
+     * @param _incentiveCampaignId The incentive campaign identifier.
+     * @return exists Boolean indicating whether or not the incentive campaign exists.
+     * @return ip The address of the incentive provider.
+     * @return incentivesOffered Array of offered incentive token addresses.
+     * @return incentiveAmountsOffered Array of amounts offered per token.
      */
-    function incentivizedActionExists(bytes32 _incentivizedActionId) external view returns (bool exists) {
-        exists = incentivizedActionIdToIAS[_incentivizedActionId].ip != address(0);
+    function getIncentiveCampaignIncentiveInfo(bytes32 _incentiveCampaignId)
+        external
+        view
+        returns (bool exists, address ip, address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered)
+    {
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+
+        ip = ics.ip;
+        exists = ip != address(0);
+        if (exists) {
+            incentivesOffered = ics.incentivesOffered;
+            incentiveAmountsOffered = new uint256[](incentivesOffered.length);
+            for (uint256 i = 0; i < incentivesOffered.length; i++) {
+                incentiveAmountsOffered[i] = ics.incentiveToAmountOffered[incentivesOffered[i]];
+            }
+        }
+    }
+
+    /**
+     * @notice Returns the duration for the specified incentive campaign.
+     * @param _incentiveCampaignId The incentive campaign identifier.
+     * @return exists Boolean indicating whether or not the incentive campaign exists.
+     */
+    function incentiveCampaignExists(bytes32 _incentiveCampaignId) external view returns (bool exists) {
+        exists = incentiveCampaignIdToICS[_incentiveCampaignId].ip != address(0);
     }
 
     /// @notice Sets the protocol fee recipient.
@@ -323,13 +433,13 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     }
 
     /// @notice Sets the protocol fee recipient.
-    /// @param _incentivizedActionId The incentivized action identifier.
+    /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _protocolFeeClaimant Address allowed to claim protocol fees for the specified IA.
-    function setProtocolFeeClaimantForIA(bytes32 _incentivizedActionId, address _protocolFeeClaimant)
+    function setProtocolFeeClaimantForIA(bytes32 _incentiveCampaignId, address _protocolFeeClaimant)
         external
         onlyOwner
     {
-        incentivizedActionIdToIAS[_incentivizedActionId].protocolFeeClaimant = _protocolFeeClaimant;
+        incentiveCampaignIdToICS[_incentiveCampaignId].protocolFeeClaimant = _protocolFeeClaimant;
     }
 
     /// @notice Sets the protocol fee rate.
@@ -339,45 +449,58 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     }
 
     /// @notice Sets the protocol fee recipient.
-    /// @param _incentivizedActionId The incentivized action identifier.
+    /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _protocolFee The new protocol fee rate for the IA (1e18 equals 100% fee).
-    function setProtocolFeeForIA(bytes32 _incentivizedActionId, uint64 _protocolFee) external onlyOwner {
-        incentivizedActionIdToIAS[_incentivizedActionId].protocolFee = _protocolFee;
+    function setProtocolFeeForIA(bytes32 _incentiveCampaignId, uint64 _protocolFee) external onlyOwner {
+        incentiveCampaignIdToICS[_incentiveCampaignId].protocolFee = _protocolFee;
     }
 
     /// @notice Pulls incentives from the incentive provider.
+    /// @param _ics Storage reference to the incentive campaign information.
     /// @param _incentivesOffered Array of incentive token addresses.
-    /// @param _incentiveAmounts Total amounts provided for each incentive (including fees).
-    function _pullIncentives(address[] memory _incentivesOffered, uint256[] memory _incentiveAmounts) internal {
+    /// @param _incentiveAmountsOffered Total amounts provided for each incentive (including fees).
+    function _pullIncentivesAndUpdateAccounting(
+        ICS storage _ics,
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmountsOffered
+    ) internal {
+        uint256 numIncentives = _incentivesOffered.length;
+        // Check that all incentives have a corresponding amount
+        require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
+        // Get the next index at which an incentive will be inserted into incentivesOffered
+        uint256 indexForNextIncentive = _ics.incentivesOffered.length;
         // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
-        address lastIncentive;
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             // Get the incentive offered
             address incentive = _incentivesOffered[i];
 
-            // Check that the sorted incentive array has no duplicates
-            if (uint256(bytes32(bytes20(incentive))) <= uint256(bytes32(bytes20(lastIncentive)))) {
-                revert OfferCannotContainDuplicateIncentives();
-            }
-            lastIncentive = incentive;
-
             // Check if incentive is a points program
             if (isPointsProgram(incentive)) {
                 // Mark the points as spent
-                _pointsSpent(incentive, msg.sender, _incentiveAmounts[i]);
+                _spendPoints(incentive, msg.sender, _incentiveAmountsOffered[i]);
+                // If not points, transfer tokens to the incentive locker
             } else {
                 // Prevent incentive deployment frontrunning
                 if (incentive.code.length == 0) revert TokenDoesNotExist();
                 // Transfer the total incentive amounts being paid to this contract
-                ERC20(incentive).safeTransferFrom(msg.sender, address(this), _incentiveAmounts[i]);
+                ERC20(incentive).safeTransferFrom(msg.sender, address(this), _incentiveAmountsOffered[i]);
+            }
+
+            // Update ICS accounting for this incentive
+            _ics.incentiveToAmountOffered[incentive] += _incentiveAmountsOffered[i];
+            // Check if the incentive exists in the incentivesOffered array
+            if (_ics.incentiveToLogicalIndex[incentive] == 0) {
+                // If it doesn't exist, add it
+                _ics.incentiveToLogicalIndex[incentive] = ++indexForNextIncentive;
+                _ics.incentivesOffered.push(incentive);
             }
         }
     }
 
-    /// @notice Processes a single incentive claim for a given IAS.
+    /// @notice Processes a single incentive claim for a given ICS.
     /// @dev Iterates over each offered incentive, computes net amounts and fee allocations based on the claim ratio,
     ///      and pushes the calculated amounts to the _ap while accounting for fees.
-    /// @param _ias Storage reference to the incentive information.
+    /// @param _ics Storage reference to the incentive campaign information.
     /// @param _ap The address of the AP claiming the incentives.
     /// @param _protocolFeeClaimant The protocol fee recipient
     /// @param _incentives The incentive tokens to pay out to the AP.
@@ -385,7 +508,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @return incentiveAmountsPaid Array of net incentive amounts paid to the AP.
     /// @return protocolFeesPaid Array of protocol fee amounts paid.
     function _remitIncentivesAndFees(
-        IAS storage _ias,
+        ICS storage _ics,
         address _ap,
         address _protocolFeeClaimant,
         address[] memory _incentives,
@@ -393,7 +516,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     ) internal returns (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) {
         // Cache for gas op
         uint256 numIncentives = _incentives.length;
-        address ip = _ias.ip;
+        address ip = _ics.ip;
         // Check each incentive has a corrseponding amount owed
         require(numIncentives == _incentiveAmountsOwed.length, ArrayLengthMismatch());
         // Initialize array for event emission
@@ -406,58 +529,65 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             uint256 incentiveAmountOwed = _incentiveAmountsOwed[i];
 
             // Account for spent incentives to prevent co-mingling of incentives
-            _ias.incentiveAmountsOffered[incentive] -= incentiveAmountOwed;
+            _ics.incentiveToAmountOffered[incentive] -= incentiveAmountOwed;
 
             // Calculate fee amounts based on the claim ratio.
-            protocolFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ias.protocolFee);
+            protocolFeesPaid[i] = incentiveAmountOwed.mulWadDown(_ics.protocolFee);
 
             // Calculate the net incentive amount to be paid after applying fees.
             incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i];
 
             // Push incentives to the AP and account for fees.
             _pushIncentivesAndAccountFees(
-                incentive, _ap, _protocolFeeClaimant, incentiveAmountsPaid[i], protocolFeesPaid[i], ip
+                incentive, _ap, _protocolFeeClaimant, incentiveAmountsPaid[i], protocolFeesPaid[i]
             );
         }
     }
 
     /// @notice Transfers incentives to the action provider and accounts for fees.
     /// @param incentive The address of the incentive token.
-    /// @param to Recipient address for the incentive.
+    /// @param ap The address of the AP that is owed the incentives.
+    /// @param protocolFeeClaimant The address of the protocol fee claimant.
     /// @param incentiveAmount Net incentive amount to be transferred.
-    /// @param defaultProtocolFeeAmount Protocol fee amount.
-    /// @param ip Address of the incentive provider.
+    /// @param protocolFeeAmount Protocol fee amount.
     function _pushIncentivesAndAccountFees(
         address incentive,
-        address to,
+        address ap,
         address protocolFeeClaimant,
         uint256 incentiveAmount,
-        uint256 defaultProtocolFeeAmount,
-        address ip
+        uint256 protocolFeeAmount
     ) internal {
-        // Take fees
-        _accountFee(protocolFeeClaimant, incentive, defaultProtocolFeeAmount, ip);
-
-        // Push incentives to AP
+        // Take fees and push incentives to AP
         if (isPointsProgram(incentive)) {
-            _award(incentive, to, incentiveAmount);
+            // Award points to fee claimant
+            _award(incentive, protocolFeeClaimant, protocolFeeAmount);
+            // Award points to the the AP
+            _award(incentive, ap, incentiveAmount);
         } else {
-            ERC20(incentive).safeTransfer(to, incentiveAmount);
+            // Make fees claimable by fee claimant
+            feeClaimantToTokenToAmount[protocolFeeClaimant][incentive] += protocolFeeAmount;
+            // Transfer incentives to the AP
+            ERC20(incentive).safeTransfer(ap, incentiveAmount);
         }
     }
 
-    /// @notice Accounts fees for a recipient.
-    /// @param to Address to which fees are credited.
-    /// @param incentive The incentive token address.
-    /// @param feeAmount Fee amount to be credited.
-    /// @param ip Address of the incentive provider (used for points programs).
-    function _accountFee(address to, address incentive, uint256 feeAmount, address ip) internal {
-        // Check to see if the incentive is actually a points campaign
-        if (isPointsProgram(incentive)) {
-            // Points cannot be claimed and are rather directly awarded
-            _award(incentive, to, feeAmount);
-        } else {
-            feeClaimantToTokenToAmount[to][incentive] += feeAmount;
+    function _removeIncentiveFromCampaign(ICS storage _ics, address _incentive) internal {
+        // Retrieve and convert the logical index (1-indexed) of _incentive to its physical index (0-indexed)
+        uint256 index = _ics.incentiveToLogicalIndex[_incentive] - 1;
+        uint256 lastIndex = _ics.incentivesOffered.length - 1;
+        // Save the incentive to be removed from the array
+        address removedIncentive = _ics.incentivesOffered[index];
+        // If index is not the last index, swap the last incentive into the index position
+        if (index != lastIndex) {
+            // Get the incentive at the last index in the incentivesOffered array
+            address lastIncentive = _ics.incentivesOffered[lastIndex];
+            // Place the last incentive at index and update its logical index to reflect its new physical index
+            _ics.incentivesOffered[index] = lastIncentive;
+            _ics.incentiveToLogicalIndex[lastIncentive] = index + 1;
         }
+        // Mark the element (the removed incentive) as removed from the array
+        delete _ics.incentiveToLogicalIndex[removedIncentive];
+        // Pop the last element off
+        _ics.incentivesOffered.pop();
     }
 }

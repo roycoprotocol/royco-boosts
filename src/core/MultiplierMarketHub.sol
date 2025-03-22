@@ -18,26 +18,26 @@ contract MultiplierMarketHub {
     /// @param multiplier Multiplier proposed by the AP.
     /// @param size Optional quantitative parameter to enable negotiation for (dollars, discrete token amounts, etc.)
     ///             The ActionVerifer is responsible for interpreting this parameter.
-    /// @param incentivizedActionId Incentivized action identifier to produce an AP offer for.
+    /// @param incentiveCampaignId Incentive campaign identifier to produce an AP offer for.
     struct APOffer {
         address ap;
         uint96 multiplier;
         uint256 size;
-        bytes32 incentivizedActionId;
+        bytes32 incentiveCampaignId;
     }
 
-    /// @param incentivizedActionId Incentivized action identifier to opt in to.
-    /// @param ap The address of the Action Provider opting into the incentivized action.
-    event OptedInToIncentivizedAction(bytes32 indexed incentivizedActionId, address indexed ap);
+    /// @param incentiveCampaignId Incentive campaign identifier to opt in to.
+    /// @param ap The address of the Action Provider opting into the incentive campaign.
+    event OptedInToIncentiveCampaign(bytes32 indexed incentiveCampaignId, address indexed ap);
 
     /// @notice Emitted when an AP offer is created.
-    /// @param incentivizedActionId The hash identifier of the associated IP offer.
+    /// @param incentiveCampaignId The hash identifier of the associated IP offer.
     /// @param apOfferHash The unique hash identifier of the AP offer.
     /// @param ap The address of the Action Provider creating the offer.
     /// @param multiplier The multiplier counter-offered by the AP.
     /// @param size Optional quantitative parameter offered by the AP.
     event APOfferCreated(
-        bytes32 indexed incentivizedActionId,
+        bytes32 indexed incentiveCampaignId,
         bytes32 indexed apOfferHash,
         address indexed ap,
         uint96 multiplier,
@@ -46,21 +46,21 @@ contract MultiplierMarketHub {
 
     /// @notice Emitted when an AP offer is filled by the correct Incentive Provider.
     /// @param apOfferHash The hash identifier of the filled AP offer.
-    /// @param incentivizedActionId The hash identifier of the associated IP offer.
+    /// @param incentiveCampaignId The hash identifier of the associated IP offer.
     /// @param ap The address of the Action Provider whose offer was filled.
     /// @param multiplier The multiplier offered by the AP.
     /// @param size Optional quantitative parameter offered by the AP.
     event APOfferFilled(
         bytes32 indexed apOfferHash,
-        bytes32 indexed incentivizedActionId,
+        bytes32 indexed incentiveCampaignId,
         address indexed ap,
         uint96 multiplier,
         uint256 size
     );
 
     error OnlyTheIpCanFill();
-    error NonexistantIncentivizedAction();
-    error IncentivizedActionExpired();
+    error NonexistantIncentiveCampaign();
+    error IncentiveCampaignExpired();
 
     /// @notice Address of the Incentive Locker contract used to manage incentive campaigns.
     IncentiveLocker public immutable incentiveLocker;
@@ -71,13 +71,13 @@ contract MultiplierMarketHub {
     /// @notice Counter for the number of offers created.
     uint256 numApOffers;
 
-    modifier incentivizedActionChecks(bytes32 _incentivizedActionId, bool _checkCallerIsIP) {
+    modifier incentiveCampaignChecks(bytes32 _incentiveCampaignId, bool _checkCallerIsIP) {
         (bool exists, address ip,, uint32 endTimestamp) =
-            incentiveLocker.getIncentivizedActionDuration(_incentivizedActionId);
+            incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
 
-        // Ensure that the incentivized action exists in the incentive locker and hasn't expired
-        require(exists, NonexistantIncentivizedAction());
-        require(block.timestamp <= endTimestamp, IncentivizedActionExpired());
+        // Ensure that the incentive campaign exists in the incentive locker and hasn't expired
+        require(exists, NonexistantIncentiveCampaign());
+        require(block.timestamp <= endTimestamp, IncentiveCampaignExpired());
 
         // Check that the caller is the IP if specified
         require(!_checkCallerIsIP || msg.sender == ip, OnlyTheIpCanFill());
@@ -90,51 +90,51 @@ contract MultiplierMarketHub {
         incentiveLocker = IncentiveLocker(_incentiveLocker);
     }
 
-    /// @notice Opts into an incentivized action campaign.
+    /// @notice Opts into an incentive campaign campaign.
     /// @dev Callable by APs.
-    /// @param _incentivizedActionId Incentivized action identifier.
-    function optIn(bytes32 _incentivizedActionId) external incentivizedActionChecks(_incentivizedActionId, false) {
+    /// @param _incentiveCampaignId Incentive campaign identifier.
+    function optIn(bytes32 _incentiveCampaignId) external incentiveCampaignChecks(_incentiveCampaignId, false) {
         // Todo: Think about sybil attacks on this function which exhaust oracle resources (subgraph requests and rpc calls)
 
         // Emit the event indicating the IP offer has been filled.
-        emit OptedInToIncentivizedAction(_incentivizedActionId, msg.sender);
+        emit OptedInToIncentiveCampaign(_incentiveCampaignId, msg.sender);
     }
 
-    /// @notice Creates an AP offer for an incentivized action.
-    /// @param _incentivizedActionId Incentivized action identifier to produce an AP offer for.
+    /// @notice Creates an AP offer for an incentive campaign.
+    /// @param _incentiveCampaignId Incentive campaign identifier to produce an AP offer for.
     /// @param _multiplier Multiplier requested by the AP.
     /// @param _size Optional quantitative parameter offered by the AP.
     /// @return apOfferHash Unique AP offer identifier.
-    function createAPOffer(bytes32 _incentivizedActionId, uint96 _multiplier, uint256 _size)
+    function createAPOffer(bytes32 _incentiveCampaignId, uint96 _multiplier, uint256 _size)
         external
-        incentivizedActionChecks(_incentivizedActionId, false)
+        incentiveCampaignChecks(_incentiveCampaignId, false)
         returns (bytes32 apOfferHash)
     {
         // Compute the AP offer hash using an incremental counter and provided parameters.
-        apOfferHash = keccak256(abi.encode(++numApOffers, _incentivizedActionId, _multiplier, _size));
+        apOfferHash = keccak256(abi.encode(++numApOffers, _incentiveCampaignId, _multiplier, _size));
 
         // Store the AP offer details.
         APOffer storage apOffer = offerHashToAPOffer[apOfferHash];
         apOffer.ap = msg.sender;
         apOffer.multiplier = _multiplier;
         apOffer.size = _size;
-        apOffer.incentivizedActionId = _incentivizedActionId;
+        apOffer.incentiveCampaignId = _incentiveCampaignId;
 
         // Emit the AP offer creation event.
-        emit APOfferCreated(_incentivizedActionId, apOfferHash, msg.sender, _multiplier, _size);
+        emit APOfferCreated(_incentiveCampaignId, apOfferHash, msg.sender, _multiplier, _size);
     }
 
     /// @notice Fills an AP offer.
-    /// @dev Must be called by the IP that created the incentivized action in the incentive locker.
+    /// @dev Must be called by the IP that created the incentive campaign in the incentive locker.
     /// @param _apOfferHash AP offer identifier.
     function fillAPOffer(bytes32 _apOfferHash)
         external
-        incentivizedActionChecks(offerHashToAPOffer[_apOfferHash].incentivizedActionId, true)
+        incentiveCampaignChecks(offerHashToAPOffer[_apOfferHash].incentiveCampaignId, true)
     {
         // Get AP offer from storage
         APOffer storage apOffer = offerHashToAPOffer[_apOfferHash];
 
         // Emit the event indicating the AP offer has been filled.
-        emit APOfferFilled(_apOfferHash, apOffer.incentivizedActionId, apOffer.ap, apOffer.multiplier, apOffer.size);
+        emit APOfferFilled(_apOfferHash, apOffer.incentiveCampaignId, apOffer.ap, apOffer.multiplier, apOffer.size);
     }
 }
