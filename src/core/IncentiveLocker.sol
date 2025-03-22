@@ -571,6 +571,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         }
     }
 
+    /// @notice Remove an incentive from a campaign in O(1) time
+    /// @param _ics Storage reference to the incentive campaign information.
+    /// @param _incentive The incentive to remove from the campaign
     function _removeIncentiveFromCampaign(ICS storage _ics, address _incentive) internal {
         // Retrieve and convert the logical index (1-indexed) of _incentive to its physical index (0-indexed)
         uint256 index = _ics.incentiveToLogicalIndex[_incentive] - 1;

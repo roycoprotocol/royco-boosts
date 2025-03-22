@@ -83,7 +83,7 @@ abstract contract PointsRegistry {
         require(whitelistLength == _spendCaps.length, ArrayLengthMismatch());
 
         // Calculate a unique identifier and truncate it to 20 bytes
-        pointsId = address(bytes20(keccak256(abi.encode(++numPointsPrograms, _name, _symbol, _decimals))));
+        pointsId = address(bytes20(keccak256(abi.encode(++numPointsPrograms, msg.sender, _name, _symbol, _decimals))));
 
         // Initialize the state of the points program in storage
         PointsProgram storage pointsProgram = pointsIdToProgram[pointsId];
@@ -94,6 +94,7 @@ abstract contract PointsRegistry {
             pointsProgram.ipToSpendCap[_whitelistedIPs[i]] = _spendCaps[i];
         }
 
+        // Emit creation event
         emit PointsProgramCreated(msg.sender, _name, _symbol, _decimals, _whitelistedIPs, _spendCaps);
     }
 
@@ -111,11 +112,12 @@ abstract contract PointsRegistry {
         uint256 numUpdates = _ips.length;
         require(numUpdates == _spendCaps.length, ArrayLengthMismatch());
 
-        //
+        // Update the IP spend caps in storage
         for (uint256 i = 0; i < numUpdates; ++i) {
             pointsProgram.ipToSpendCap[_ips[i]] = _spendCaps[i];
         }
 
+        // Emit update event
         emit SpendCapsUpdated(_pointsId, _ips, _spendCaps);
     }
 
