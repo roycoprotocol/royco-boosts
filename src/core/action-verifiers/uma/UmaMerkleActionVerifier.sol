@@ -6,8 +6,8 @@ import {UmaMerkleOracleBase} from "./oracle/UmaMerkleOracleBase.sol";
 import {MerkleProof} from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
 /// @title UmaMerkleActionVerifier
-/// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots related to Uniswap LP claims.
-///         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
+/// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots.
+///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
 contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Action parameters for this action verifier.
     /// @param ipfsCID The link to the ipfs doc which store an action description and more info
@@ -26,11 +26,6 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         uint256[] incentiveAmountsOwed;
         bytes32[] merkleProof;
     }
-
-    /// @notice Emitted when a Merkle root is set (resolved) for an offer.
-    /// @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
-    /// @param merkleRoot The verified Merkle root for the given incentiveCampaignId.
-    event MerkleRootSet(bytes32 indexed incentiveCampaignId, bytes32 merkleRoot);
 
     /// @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
     /// @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
@@ -120,7 +115,32 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         uint256[] memory _incentiveAmountsToRemove,
         address _ip
     ) external view override onlyIncentiveLocker returns (bool valid) {
-        valid = true;
+        // Get the necessary incentive campaign information after executing the removal
+        (,, uint32 startTimestamp, uint32 endTimestamp) =
+            incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
+
+        // Calculate the duration of the campaign
+        uint256 totalCampaignDuration = endTimestamp - startTimestamp;
+        uint256 remainingCampaignDuration = endTimestamp - block.timestamp;
+
+        // Make sure that the incentives remaining are greater than or equal to the total incentives spent so far
+        // This AV is configured to stream incentives for the entire campaign duration, so you can't remove more than what has been streamed
+        uint256 numIncentivesToRemove = _incentivesToRemove.length;
+        for (uint256 i = 0; i < numIncentivesToRemove; ++i) {
+            (,, uint256 incentiveAmountOffered, uint256 incentiveAmountRemaining) =
+                incentiveLocker.getIncentiveAmountOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove[i]);
+
+            // Calculate the minimum amount remaining
+            uint256 minIncentiveAmountRemaining =
+                (incentiveAmountOffered * remainingCampaignDuration) / totalCampaignDuration;
+
+            // If remaining is less than the min amount remaning, removal isn't valid
+            if (incentiveAmountRemaining < minIncentiveAmountRemaining) {
+                return false;
+            }
+        }
+        // If each incentive still has more left than the minimum amount, the removal is valid
+        return true;
     }
 
     /// @notice Processes a claim by validating the provided parameters.
@@ -171,9 +191,6 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
 
         // Store the merkle root for the corresponding incentiveCampaignId.
         incentiveCampaignIdToMerkleRoot[incentiveCampaignId] = merkleRoot;
-
-        // Emit an event indicating that users can now claim based on this root.
-        emit MerkleRootSet(incentiveCampaignId, merkleRoot);
     }
 
     /// @notice Internal hook that handles dispute logic if an assertion is disputed.

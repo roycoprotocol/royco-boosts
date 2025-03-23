@@ -489,10 +489,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         }
     }
 
-    /// @notice Returns the incentives and amounts for the specified incentive campaign.
+    /// @notice Returns the duration, incentives, and amounts for the specified incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
     /// @return ip The address of the incentive provider.
+    /// @return startTimestamp Timestamp from which incentives start.
+    /// @return endTimestamp Timestamp when incentives stop.
     /// @return incentivesOffered Array of offered incentive token addresses.
     /// @return incentiveAmountsOffered Array of total amounts offered per token.
     /// @return incentiveAmountsRemaining Array of amounts offered per token.
@@ -502,6 +504,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         returns (
             bool exists,
             address ip,
+            uint32 startTimestamp,
+            uint32 endTimestamp,
             address[] memory incentivesOffered,
             uint256[] memory incentiveAmountsOffered,
             uint256[] memory incentiveAmountsRemaining
@@ -512,6 +516,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
+            startTimestamp = ics.startTimestamp;
+            endTimestamp = ics.endTimestamp;
             incentivesOffered = ics.incentivesOffered;
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
             incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
@@ -519,6 +525,28 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
                 incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
                 incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
+        }
+    }
+
+    /// @notice Returns the incentive amounts for the specified incentive in the incentive campaign.
+    /// @param _incentiveCampaignId The incentive campaign identifier.
+    /// @param _incentive The incentive to query the amount info for.
+    /// @return exists Boolean indicating whether or not the incentive campaign exists.
+    /// @return ip The address of the incentive provider.
+    /// @return incentiveAmountOffered Amount offered for the incentive.
+    /// @return incentiveAmountRemaining Amount offered for the incentive.
+    function getIncentiveAmountOfferedAndRemaining(bytes32 _incentiveCampaignId, address _incentive)
+        external
+        view
+        returns (bool exists, address ip, uint256 incentiveAmountOffered, uint256 incentiveAmountRemaining)
+    {
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+
+        ip = ics.ip;
+        exists = ip != address(0);
+        if (exists) {
+            incentiveAmountOffered = ics.incentiveToTotalAmountOffered[_incentive];
+            incentiveAmountRemaining = ics.incentiveToAmountRemaining[_incentive];
         }
     }
 
