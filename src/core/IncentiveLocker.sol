@@ -123,6 +123,26 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param amount The amount of fees claimed.
     event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
 
+    /// @notice Emitted when the default protocol fee claimant is set.
+    /// @param newDefaultProtocolFeeClaimant Address allowed to claim protocol fees.
+    event DefaultProtocolFeeClaimantSet(address indexed newDefaultProtocolFeeClaimant);
+
+    /// @notice Emitted when the protocol fee claimant for a specific incentive campaign is set.
+    /// @param incentiveCampaignId The incentive campaign identifier.
+    /// @param newProtocolFeeClaimant Address allowed to claim protocol fees for the specified campaign.
+    event ProtocolFeeClaimantForCampaignSet(
+        bytes32 indexed incentiveCampaignId, address indexed newProtocolFeeClaimant
+    );
+
+    /// @notice Emitted when the default protocol fee rate is set.
+    /// @param newDefaultProtocolFee The new default protocol fee rate (1e18 equals 100% fee).
+    event DefaultProtocolFeeSet(uint64 newDefaultProtocolFee);
+
+    /// @notice Emitted when the protocol fee rate for a specific incentive campaign is set.
+    /// @param incentiveCampaignId The incentive campaign identifier.
+    /// @param newProtocolFee The new protocol fee rate for the campaign (1e18 equals 100% fee).
+    event ProtocolFeeForCampaignSet(bytes32 indexed incentiveCampaignId, uint64 newProtocolFee);
+
     /// @notice Thrown when a function is called by an address other than the incentive provider.
     error OnlyIP();
 
@@ -154,7 +174,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     constructor(address _owner, address _defaultProtocolFeeClaimant, uint64 _defaultProtocolFee) Ownable(_owner) {
         // Set the initial contract state
         defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
+        emit DefaultProtocolFeeClaimantSet(_defaultProtocolFeeClaimant);
+
         defaultProtocolFee = _defaultProtocolFee;
+        emit DefaultProtocolFeeSet(_defaultProtocolFee);
     }
 
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
@@ -510,6 +533,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param _defaultProtocolFeeClaimant Address allowed to claim protocol fees.
     function setDefaultProtocolFeeClaimant(address _defaultProtocolFeeClaimant) external onlyOwner {
         defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
+        emit DefaultProtocolFeeClaimantSet(_defaultProtocolFeeClaimant);
     }
 
     /// @notice Sets the protocol fee recipient for a specific incentive campaign.
@@ -520,12 +544,14 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         onlyOwner
     {
         incentiveCampaignIdToICS[_incentiveCampaignId].protocolFeeClaimant = _protocolFeeClaimant;
+        emit ProtocolFeeClaimantForCampaignSet(_incentiveCampaignId, _protocolFeeClaimant);
     }
 
     /// @notice Sets the default protocol fee rate.
     /// @param _defaultProtocolFee The new default protocol fee rate (1e18 equals 100% fee).
     function setDefaultProtocolFee(uint64 _defaultProtocolFee) external onlyOwner {
         defaultProtocolFee = _defaultProtocolFee;
+        emit DefaultProtocolFeeSet(_defaultProtocolFee);
     }
 
     /// @notice Sets the protocol fee rate for a specific incentive campaign.
@@ -533,6 +559,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param _protocolFee The new protocol fee rate for the campaign (1e18 equals 100% fee).
     function setProtocolFeeForCampaign(bytes32 _incentiveCampaignId, uint64 _protocolFee) external onlyOwner {
         incentiveCampaignIdToICS[_incentiveCampaignId].protocolFee = _protocolFee;
+        emit ProtocolFeeForCampaignSet(_incentiveCampaignId, _protocolFee);
     }
 
     /// @notice Pulls incentives from the incentive provider and updates accounting.
