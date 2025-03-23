@@ -5,70 +5,54 @@ import {IActionVerifier} from "../../interfaces/IActionVerifier.sol";
 import {UmaMerkleOracleBase} from "../oracle/UmaMerkleOracleBase.sol";
 import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
-/**
- * @title UmaActionVerifier
- * @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots related to Uniswap LP claims.
- *         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
- */
+/// @title UmaActionVerifier
+/// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots related to Uniswap LP claims.
+///         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
 contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
-    /**
-     * @notice Action parameters for this action verifier.
-     * @param ipfsCID The link to the ipfs doc which store an action description and more info
-     */
+    /// @notice Action parameters for this action verifier.
+    /// @param ipfsCID The link to the ipfs doc which store an action description and more info
     struct ActionParams {
         address orderbook;
         bytes4 selector;
         bytes32 ipfsCID;
     }
 
-    /**
-     * @notice Parameters used for user claims.
-     * @param ratioOwed The ratio of rewards owed to the user.
-     * @param incentives The incentive tokens to pay out to the AP.
-     * @param incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
-     */
+    /// @notice Parameters used for user claims.
+    /// @param ratioOwed The ratio of rewards owed to the user.
+    /// @param incentives The incentive tokens to pay out to the AP.
+    /// @param incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
     struct ClaimParams {
         address[] incentives;
         uint256[] incentiveAmountsOwed;
         bytes32[] merkleProof;
     }
 
-    /**
-     * @notice Emitted when a Merkle root is set (resolved) for an offer.
-     * @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
-     * @param merkleRoot The verified Merkle root for the given incentiveCampaignId.
-     */
+    /// @notice Emitted when a Merkle root is set (resolved) for an offer.
+    /// @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
+    /// @param merkleRoot The verified Merkle root for the given incentiveCampaignId.
     event MerkleRootSet(bytes32 indexed incentiveCampaignId, bytes32 merkleRoot);
 
-    /**
-     * @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
-     * @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
-     * @param leaf The computed Merkle leaf (address and ratio) claimed by the user.
-     */
+    /// @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
+    /// @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
+    /// @param leaf The computed Merkle leaf (address and ratio) claimed by the user.
     event UserClaimed(bytes32 indexed incentiveCampaignId, bytes32 indexed leaf);
 
     /// @notice Error thrown if the signature is invalid (not currently used in this contract).
     error InvalidSignature();
 
-    /**
-     * @notice Maps an incentiveCampaignId to its Merkle root. A zero value indicates no root has been set.
-     */
+    /// @notice Maps an incentiveCampaignId to its Merkle root. A zero value indicates no root has been set.
     mapping(bytes32 id => bytes32 merkleRoot) public incentiveCampaignIdToMerkleRoot;
 
-    /**
-     * @notice Tracks which leaves have already been claimed for a given incentiveCampaignId.
-     */
+    /// @notice Tracks which leaves have already been claimed for a given incentiveCampaignId.
     mapping(bytes32 id => mapping(bytes32 merkleLeaf => bool claimed)) public incentiveCampaignIdToMerkleLeafToClaimed;
 
-    /**
-     * @notice Constructs the UmaActionVerifier.
-     * @param _owner The initial owner of the contract.
-     * @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
-     * @param _incentiveLocker The address of the IncentiveLocker contract.
-     * @param _delegatedAsserter The initial delegated asserter address.
-     * @param _bondCurrency The ERC20 token address used for bonding in UMA.
-     * @param _assertionLiveness The liveness (in seconds) for UMA assertions.
-     */
+    /// @notice Constructs the UmaActionVerifier.
+    /// @param _owner The initial owner of the contract.
+    /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
+    /// @param _incentiveLocker The address of the IncentiveLocker contract.
+    /// @param _delegatedAsserter The initial delegated asserter address.
+    /// @param _bondCurrency The ERC20 token address used for bonding in UMA.
+    /// @param _assertionLiveness The liveness (in seconds) for UMA assertions.
     constructor(
         address _owner,
         address _optimisticOracleV3,
@@ -93,13 +77,11 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         _;
     }
 
-    /**
-     * @notice Processes incentive campaign creation by validating the provided parameters.
-     * @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
-     * @param _actionParams Arbitrary parameters defining the action.
-     * @param _ip The address placing the incentives for this action.
-     * @return valid Returns true if the market creation is valid.
-     */
+    /// @notice Processes incentive campaign creation by validating the provided parameters.
+    /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
+    /// @param _actionParams Arbitrary parameters defining the action.
+    /// @param _ip The address placing the incentives for this action.
+    /// @return valid Returns true if the market creation is valid.
     function processIncentiveCampaignCreation(bytes32 _incentiveCampaignId, bytes memory _actionParams, address _ip)
         external
         view
@@ -111,14 +93,12 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         valid = true;
     }
 
-    /**
-     * @notice Processes the addition of incentives for a given campaign.
-     * @param _incentiveCampaignId The unique identifier for the incentive campaign.
-     * @param _incentivesOffered The list of incentive token addresses offered in the campaign.
-     * @param _incentiveAmountsOffered The corresponding amounts offered for each incentive token.
-     * @param _ip The address placing the incentives for this campaign.
-     * @return valid Returns true if the incentives were successfully added.
-     */
+    /// @notice Processes the addition of incentives for a given campaign.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
+    /// @param _incentivesOffered The list of incentive token addresses offered in the campaign.
+    /// @param _incentiveAmountsOffered The corresponding amounts offered for each incentive token.
+    /// @param _ip The address placing the incentives for this campaign.
+    /// @return valid Returns true if the incentives were successfully added.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
@@ -128,14 +108,12 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         valid = true;
     }
 
-    /**
-     * @notice Processes the removal of incentives for a given campaign.
-     * @param _incentiveCampaignId The unique identifier for the incentive campaign.
-     * @param _incentivesToRemove The list of incentive token addresses to be removed from the campaign.
-     * @param _incentiveAmountsToRemove The corresponding amounts to remove for each incentive token.
-     * @param _ip The address placing the incentives for this campaign.
-     * @return valid Returns true if the incentives were successfully removed.
-     */
+    /// @notice Processes the removal of incentives for a given campaign.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
+    /// @param _incentivesToRemove The list of incentive token addresses to be removed from the campaign.
+    /// @param _incentiveAmountsToRemove The corresponding amounts to remove for each incentive token.
+    /// @param _ip The address placing the incentives for this campaign.
+    /// @return valid Returns true if the incentives were successfully removed.
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesToRemove,
@@ -145,15 +123,13 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         valid = true;
     }
 
-    /**
-     * @notice Processes a claim by validating the provided parameters.
-     * @param _ap The address of the action provider (AP) making the claim.
-     * @param _incentiveCampaignId The unique identifier for the incentive campaign used for the claim.
-     * @param _claimParams Encoded parameters required for processing the claim.
-     * @return valid Returns true if the claim is valid.
-     * @return incentives The incentive token addresses to be paid out to the AP.
-     * @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
-     */
+    /// @notice Processes a claim by validating the provided parameters.
+    /// @param _ap The address of the action provider (AP) making the claim.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign used for the claim.
+    /// @param _claimParams Encoded parameters required for processing the claim.
+    /// @return valid Returns true if the claim is valid.
+    /// @return incentives The incentive token addresses to be paid out to the AP.
+    /// @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
     function processClaim(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams)
         external
         override
@@ -185,11 +161,9 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         return (true, claimParams.incentives, claimParams.incentiveAmountsOwed);
     }
 
-    /**
-     * @notice Internal hook that handles the resolution logic for a truthful assertion.
-     * @dev Called by `_processAssertionResolution` in the parent UmaMerkleOracleBase contract.
-     * @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
-     */
+    /// @notice Internal hook that handles the resolution logic for a truthful assertion.
+    /// @dev Called by `_processAssertionResolution` in the parent UmaMerkleOracleBase contract.
+    /// @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
     function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal override {
         // Load the incentiveCampaignId/incentiveCampaignId and merkleRoot from storage
         bytes32 incentiveCampaignId = _merkleRootAssertion.incentiveCampaignId;
@@ -202,10 +176,8 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         emit MerkleRootSet(incentiveCampaignId, merkleRoot);
     }
 
-    /**
-     * @notice Internal hook that handles dispute logic if an assertion is disputed.
-     * @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracleBase contract.
-     * @param _assertionId The ID of the disputed assertion in UMA.
-     */
-    function _processAssertionDispute(bytes32 _assertionId) internal override {}
+    /// @notice Internal hook that handles dispute logic if an assertion is disputed.
+    /// @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracleBase contract.
+    /// @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
+    function _processAssertionDispute(MerkleRootAssertion storage _merkleRootAssertion) internal override {}
 }

@@ -383,7 +383,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @return actionVerifier The address of the action verifier.
     /// @return actionParams The parameters describing the action.
     /// @return incentivesOffered Array of offered incentive token addresses.
-    /// @return incentiveAmountsOffered Array of amounts offered per token.
+    /// @return incentiveAmountsOffered Array of total amounts offered per token.
+    /// @return incentiveAmountsRemaining Array of amounts remaining per token.
     function getIncentiveCampaignState(bytes32 _incentiveCampaignId)
         external
         view
@@ -397,7 +398,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             address actionVerifier,
             bytes memory actionParams,
             address[] memory incentivesOffered,
-            uint256[] memory incentiveAmountsOffered
+            uint256[] memory incentiveAmountsOffered,
+            uint256[] memory incentiveAmountsRemaining
         )
     {
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
@@ -414,8 +416,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             actionParams = ics.actionParams;
             incentivesOffered = ics.incentivesOffered;
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
+            incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
             for (uint256 i = 0; i < incentivesOffered.length; i++) {
-                incentiveAmountsOffered[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
+                incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
         }
     }
@@ -467,11 +471,18 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
     /// @return ip The address of the incentive provider.
     /// @return incentivesOffered Array of offered incentive token addresses.
-    /// @return incentiveAmountsOffered Array of amounts offered per token.
+    /// @return incentiveAmountsOffered Array of total amounts offered per token.
+    /// @return incentiveAmountsRemaining Array of amounts offered per token.
     function getIncentiveCampaignIncentiveInfo(bytes32 _incentiveCampaignId)
         external
         view
-        returns (bool exists, address ip, address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered)
+        returns (
+            bool exists,
+            address ip,
+            address[] memory incentivesOffered,
+            uint256[] memory incentiveAmountsOffered,
+            uint256[] memory incentiveAmountsRemaining
+        )
     {
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
@@ -480,8 +491,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         if (exists) {
             incentivesOffered = ics.incentivesOffered;
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
+            incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
             for (uint256 i = 0; i < incentivesOffered.length; i++) {
-                incentiveAmountsOffered[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
+                incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
         }
     }

@@ -10,14 +10,12 @@ import {ERC20} from "../../../lib/solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "../../../lib/solmate/src/utils/SafeTransferLib.sol";
 import {AncillaryData} from "../../libraries/AncillaryData.sol";
 
-/**
- * @title UmaMerkleOracleBase
- * @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
- *         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
- *         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
- * @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
- *      and validating merkle roots for incentive claims.
- */
+/// @title UmaMerkleOracleBase
+/// @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
+///         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
+///         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
+/// @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
+///      and validating merkle roots for incentive claims.
 abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
     using SafeTransferLib for ERC20;
 
@@ -35,14 +33,12 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     /// @notice The liveness period (in seconds) for each assertion in UMA.
     uint64 public assertionLiveness;
 
-    /**
-     * @notice A struct holding the key data of a Merkle root assertion.
-     * @dev    Each assertion links to an `incentiveCampaignId` in the `IncentiveLocker` contract.
-     * @param incentiveCampaignId The incentiveCampaignId used to track the incentives for this Merkle root in `IncentiveLocker`.
-     * @param merkleRoot The asserted Merkle root.
-     * @param asserter The address that made the assertion.
-     * @param resolved A boolean indicating if the assertion has been resolved (validated as true).
-     */
+    /// @notice A struct holding the key data of a Merkle root assertion.
+    /// @dev    Each assertion links to an `incentiveCampaignId` in the `IncentiveLocker` contract.
+    /// @param incentiveCampaignId The incentiveCampaignId used to track the incentives for this Merkle root in `IncentiveLocker`.
+    /// @param merkleRoot The asserted Merkle root.
+    /// @param asserter The address that made the assertion.
+    /// @param resolved A boolean indicating if the assertion has been resolved (validated as true).
     struct MerkleRootAssertion {
         bytes32 incentiveCampaignId;
         bytes32 merkleRoot;
@@ -53,44 +49,43 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     /// @notice Maps a UMA assertion ID to its corresponding `MerkleRootAssertion`.
     mapping(bytes32 id => MerkleRootAssertion assertion) public assertionIdToMerkleRootAssertion;
 
-    /**
-     * @notice Emitted when a Merkle root is asserted.
-     * @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
-     * @param merkleRoot The Merkle root being asserted.
-     * @param asserter The address that made the assertion.
-     * @param assertionId The unique ID of the assertion in UMA's OO system.
-     */
+    /// @notice Emitted when a Merkle root is asserted.
+    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
+    /// @param merkleRoot The Merkle root being asserted.
+    /// @param asserter The address that made the assertion.
+    /// @param assertionId The unique ID of the assertion in UMA's OO system.
     event MerkleRootAsserted(
         bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId
     );
 
-    /**
-     * @notice Emitted when a previously asserted Merkle root is resolved (validated true by the OO).
-     * @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
-     * @param merkleRoot The Merkle root that was verified.
-     * @param asserter The address that originally made the assertion.
-     * @param assertionId The unique ID of the assertion in UMA's OO system.
-     */
+    /// @notice Emitted when a previously asserted Merkle root is resolved (validated true by the OO).
+    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
+    /// @param merkleRoot The Merkle root that was verified.
+    /// @param asserter The address that originally made the assertion.
+    /// @param assertionId The unique ID of the assertion in UMA's OO system.
     event MerkleRootAssertionResolved(
         bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId
     );
 
-    /**
-     * @notice Emitted when the `delegatedAsserter` is updated by the contract owner.
-     * @param newDelegatedAsserter The new delegatedAsserter address.
-     */
+    /// @notice Emitted when a Merkle root is disputed for an offer.
+    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
+    /// @param merkleRoot The Merkle root that was verified.
+    /// @param asserter The address that originally made the assertion.
+    /// @param assertionId The unique ID of the assertion in UMA's OO system.
+    event MerkleRootAssertionDisputed(
+        bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId
+    );
+
+    /// @notice Emitted when the `delegatedAsserter` is updated by the contract owner.
+    /// @param newDelegatedAsserter The new delegatedAsserter address.
     event DelegatedAsserterUpdated(address newDelegatedAsserter);
 
-    /**
-     * @notice Emitted when the `bondCurrency` is updated by the contract owner.
-     * @param newBondCurrency The new bondCurrency address.
-     */
+    /// @notice Emitted when the `bondCurrency` is updated by the contract owner.
+    /// @param newBondCurrency The new bondCurrency address.
     event BondCurrencyUpdated(address indexed newBondCurrency);
 
-    /**
-     * @notice Emitted when the `assertionLiveness` is updated by the contract owner.
-     * @param newAssertionLiveness The new assertion liveness value.
-     */
+    /// @notice Emitted when the `assertionLiveness` is updated by the contract owner.
+    /// @param newAssertionLiveness The new assertion liveness value.
     event AssertionLivenessUpdated(uint64 newAssertionLiveness);
 
     /// @notice Error thrown when an assertion is being made for another ActionVerifier through this contract.
@@ -102,23 +97,19 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     /// @notice Error thrown when a function is called by an address other than the Optimistic Oracle.
     error UnauthorizedCallbackInvoker();
 
-    /**
-     * @notice Ensures that only UMA's Optimistic Oracle can invoke the modified function.
-     */
+    /// @notice Ensures that only UMA's Optimistic Oracle can invoke the modified function.
     modifier onlyOptimisticOracle() {
         require(msg.sender == address(oo), UnauthorizedCallbackInvoker());
         _;
     }
 
-    /**
-     * @notice Deploys the UmaMerkleOracleBase contract.
-     * @param _owner The initial owner of the contract.
-     * @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
-     * @param _incentiveLocker The address of the IncentiveLocker contract.
-     * @param _delegatedAsserter The initial delegatedAsserter address.
-     * @param _bondCurrency The address of the ERC20 token used for UMA bonding.
-     * @param _assertionLiveness The liveness duration (in seconds) for UMA assertions.
-     */
+    /// @notice Deploys the UmaMerkleOracleBase contract.
+    /// @param _owner The initial owner of the contract.
+    /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
+    /// @param _incentiveLocker The address of the IncentiveLocker contract.
+    /// @param _delegatedAsserter The initial delegated asserter address.
+    /// @param _bondCurrency The address of the ERC20 token used for UMA bonding.
+    /// @param _assertionLiveness The liveness duration (in seconds) for UMA assertions.
     constructor(
         address _owner,
         address _optimisticOracleV3,
@@ -135,12 +126,10 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         assertionLiveness = _assertionLiveness;
     }
 
-    /**
-     * @notice Retrieves the Merkle root for a specified assertionId if the assertion is resolved.
-     * @param assertionId The assertionId in the UMA system.
-     * @return resolved A boolean indicating whether the assertion is resolved.
-     * @return merkleRoot The resolved Merkle root (zero if unresolved).
-     */
+    /// @notice Retrieves the Merkle root for a specified assertionId if the assertion is resolved.
+    /// @param assertionId The assertionId in the UMA system.
+    /// @return resolved A boolean indicating whether the assertion is resolved.
+    /// @return merkleRoot The resolved Merkle root (zero if unresolved).
     function getMerkleRoot(bytes32 assertionId) external view virtual returns (bool resolved, bytes32 merkleRoot) {
         if (!assertionIdToMerkleRootAssertion[assertionId].resolved) {
             return (false, 0);
@@ -148,15 +137,13 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         return (true, assertionIdToMerkleRootAssertion[assertionId].merkleRoot);
     }
 
-    /**
-     * @notice Asserts a new Merkle root using UMA's Optimistic Oracle V3.
-     * @dev The caller must either be the `delegatedAsserter` or the Incentive Provider (IP) who set the incentive.
-     *      If `_bondAmount` is zero, the minimum bond required by the OO is used.
-     * @param _incentiveCampaignId The incentiveCampaignId in `IncentiveLocker`.
-     * @param _merkleRoot The Merkle root being asserted.
-     * @param _bondAmount The bond amount to be staked with UMA. If zero, uses OO's minimum bond.
-     * @return assertionId The unique ID returned by UMA for the new assertion.
-     */
+    /// @notice Asserts a new Merkle root using UMA's Optimistic Oracle V3.
+    /// @dev The caller must either be the `delegatedAsserter` or the Incentive Provider (IP) who set the incentive.
+    ///      If `_bondAmount` is zero, the minimum bond required by the OO is used.
+    /// @param _incentiveCampaignId The incentiveCampaignId in `IncentiveLocker`.
+    /// @param _merkleRoot The Merkle root being asserted.
+    /// @param _bondAmount The bond amount to be staked with UMA. If zero, uses OO's minimum bond.
+    /// @return assertionId The unique ID returned by UMA for the new assertion.
     function assertMerkleRoot(bytes32 _incentiveCampaignId, bytes32 _merkleRoot, uint256 _bondAmount)
         external
         virtual
@@ -198,12 +185,10 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         emit MerkleRootAsserted(_incentiveCampaignId, _merkleRoot, msg.sender, assertionId);
     }
 
-    /**
-     * @notice UMA callback invoked when an assertion is resolved.
-     * @dev Marks the assertion as resolved and calls the ActionVerifier hook if truthfully asserted, or deletes it if false.
-     * @param _assertionId The assertionId in UMA.
-     * @param _assertedTruthfully Whether UMA validated the assertion as true.
-     */
+    /// @notice UMA callback invoked when an assertion is resolved.
+    /// @dev Marks the assertion as resolved and calls the ActionVerifier hook if truthfully asserted, or deletes it if false.
+    /// @param _assertionId The assertionId in UMA.
+    /// @param _assertedTruthfully Whether UMA validated the assertion as true.
     function assertionResolvedCallback(bytes32 _assertionId, bool _assertedTruthfully)
         external
         virtual
@@ -216,47 +201,55 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
             merkleRootAssertion.resolved = true;
             // Call the ActionVerifier specific hook
             _processTruthfulAssertionResolution(merkleRootAssertion);
+            // Emit resolution event
+            emit MerkleRootAssertionResolved(
+                merkleRootAssertion.incentiveCampaignId,
+                merkleRootAssertion.merkleRoot,
+                merkleRootAssertion.asserter,
+                _assertionId
+            );
         } else {
             // Remove the assertion data to save gas (false assertion).
             delete assertionIdToMerkleRootAssertion[_assertionId];
         }
     }
 
-    /**
-     * @notice UMA callback invoked when an assertion is disputed.
-     * @dev May be used to handle logic whenever a dispute arises (e.g., for additional record keeping).
-     * @param _assertionId The assertionId in UMA.
-     */
+    /// @notice UMA callback invoked when an assertion is disputed.
+    /// @dev May be used to handle logic whenever a dispute arises (e.g., for additional record keeping).
+    /// @param _assertionId The assertionId in UMA.
     function assertionDisputedCallback(bytes32 _assertionId) external virtual onlyOptimisticOracle {
+        // Load the assertion from persistent storage
+        MerkleRootAssertion storage merkleRootAssertion = assertionIdToMerkleRootAssertion[_assertionId];
         // Call the ActionVerifier specific hook
-        _processAssertionDispute(_assertionId);
+        _processAssertionDispute(merkleRootAssertion);
+        // Emit dispute event
+        emit MerkleRootAssertionDisputed(
+            merkleRootAssertion.incentiveCampaignId,
+            merkleRootAssertion.merkleRoot,
+            merkleRootAssertion.asserter,
+            _assertionId
+        );
     }
 
-    /**
-     * @notice Updates the `delegatedAsserter` address.
-     * @dev Can only be called by the contract owner.
-     * @param _delegatedAsserter The new delegatedAsserter address.
-     */
+    /// @notice Updates the `delegatedAsserter` address.
+    /// @dev Can only be called by the contract owner.
+    /// @param _delegatedAsserter The new delegatedAsserter address.
     function setDelegatedAsserter(address _delegatedAsserter) external virtual onlyOwner {
         delegatedAsserter = _delegatedAsserter;
         emit DelegatedAsserterUpdated(_delegatedAsserter);
     }
 
-    /**
-     * @notice Updates the `bondCurrency` address.
-     * @dev Can only be called by the contract owner.
-     * @param _bondCurrency The new bondCurrency address.
-     */
+    /// @notice Updates the `bondCurrency` address.
+    /// @dev Can only be called by the contract owner.
+    /// @param _bondCurrency The new bondCurrency address.
     function setBondCurrency(address _bondCurrency) external virtual onlyOwner {
         bondCurrency = _bondCurrency;
         emit BondCurrencyUpdated(_bondCurrency);
     }
 
-    /**
-     * @notice Updates the `assertionLiveness` duration.
-     * @dev Can only be called by the contract owner.
-     * @param _assertionLiveness The new liveness period (in seconds) for assertions.
-     */
+    /// @notice Updates the `assertionLiveness` duration.
+    /// @dev Can only be called by the contract owner.
+    /// @param _assertionLiveness The new liveness period (in seconds) for assertions.
     function setAssertionLiveness(uint64 _assertionLiveness) external virtual onlyOwner {
         assertionLiveness = _assertionLiveness;
         emit AssertionLivenessUpdated(_assertionLiveness);
@@ -284,17 +277,13 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         );
     }
 
-    /**
-     * @notice Internal hook called when an assertion is resolved as truthful.
-     * @dev    Must be implemented by a concrete contract to handle the resolution logic.
-     * @param _merkleRootAssertion The storage pointer to the truthfully resolved assertion.
-     */
+    /// @notice Internal hook called when an assertion is resolved as truthful.
+    /// @dev    Must be implemented by a concrete contract to handle the resolution logic.
+    /// @param _merkleRootAssertion The storage pointer to the truthfully resolved assertion.
     function _processTruthfulAssertionResolution(MerkleRootAssertion storage _merkleRootAssertion) internal virtual;
 
-    /**
-     * @notice Internal hook called when an assertion is disputed.
-     * @dev    Must be implemented by a concrete contract to handle the dispute logic.
-     * @param _assertionId The assertionId in UMA.
-     */
-    function _processAssertionDispute(bytes32 _assertionId) internal virtual;
+    /// @notice Internal hook called when an assertion is disputed.
+    /// @dev    Must be implemented by a concrete contract to handle the dispute logic.
+    /// @param _merkleRootAssertion The storage pointer to the disputed assertion.
+    function _processAssertionDispute(MerkleRootAssertion storage _merkleRootAssertion) internal virtual;
 }
