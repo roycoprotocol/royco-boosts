@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IActionVerifier} from "../../interfaces/IActionVerifier.sol";
-import {UmaMerkleOracleBase} from "../oracle/UmaMerkleOracleBase.sol";
-import {MerkleProof} from "../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
+import {IActionVerifier} from "../../../interfaces/IActionVerifier.sol";
+import {UmaMerkleOracleBase} from "./oracle/UmaMerkleOracleBase.sol";
+import {MerkleProof} from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
-/// @title UmaActionVerifier
+/// @title UmaMerkleActionVerifier
 /// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots related to Uniswap LP claims.
 ///         It implements IActionVerifier to perform checks on market creation and user claims for Uniswap V3 pools.
-contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
+contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Action parameters for this action verifier.
     /// @param ipfsCID The link to the ipfs doc which store an action description and more info
     struct ActionParams {
@@ -46,7 +46,7 @@ contract UmaActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Tracks which leaves have already been claimed for a given incentiveCampaignId.
     mapping(bytes32 id => mapping(bytes32 merkleLeaf => bool claimed)) public incentiveCampaignIdToMerkleLeafToClaimed;
 
-    /// @notice Constructs the UmaActionVerifier.
+    /// @notice Constructs the UmaMerkleActionVerifier.
     /// @param _owner The initial owner of the contract.
     /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
     /// @param _incentiveLocker The address of the IncentiveLocker contract.

@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Ownable, Ownable2Step} from "../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
-import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
-import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
-import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
-import {IncentiveLocker} from "../core/IncentiveLocker.sol";
+import {IncentiveLocker} from "../../core/IncentiveLocker.sol";
 
 /// @title MultiplierMarketHub
 /// @notice Manages negotiation for multiplier based IAMs with offers from Incentive Providers (IP) and Action Providers (AP).
 contract MultiplierMarketHub {
-    using SafeTransferLib for ERC20;
-
     /// @notice Details for an AP offer.
     /// @param ap Address of the Action Provider.
     /// @param multiplier Multiplier proposed by the AP.

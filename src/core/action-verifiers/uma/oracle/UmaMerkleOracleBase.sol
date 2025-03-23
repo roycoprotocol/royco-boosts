@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import {OptimisticOracleV3Interface, IERC20} from "../../interfaces/OptimisticOracleV3Interface.sol";
+import {Ownable, Ownable2Step} from "../../../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import {OptimisticOracleV3Interface, IERC20} from "../../../../interfaces/OptimisticOracleV3Interface.sol";
 import {OptimisticOracleV3CallbackRecipientInterface} from
-    "../../interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
-import {IncentiveLocker} from "../../core/IncentiveLocker.sol";
-import {ERC20} from "../../../lib/solmate/src/tokens/ERC20.sol";
-import {SafeTransferLib} from "../../../lib/solmate/src/utils/SafeTransferLib.sol";
-import {AncillaryData} from "../../libraries/AncillaryData.sol";
+    "../../../../interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
+import {IncentiveLocker} from "../../../../core/IncentiveLocker.sol";
+import {ERC20} from "../../../../../lib/solmate/src/tokens/ERC20.sol";
+import {SafeTransferLib} from "../../../../../lib/solmate/src/utils/SafeTransferLib.sol";
+import {AncillaryData} from "../../../../libraries/AncillaryData.sol";
 
 /// @title UmaMerkleOracleBase
 /// @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
