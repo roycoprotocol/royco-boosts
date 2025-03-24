@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IActionVerifier} from "../../../interfaces/IActionVerifier.sol";
-import {UmaMerkleOracleBase} from "./oracle/UmaMerkleOracleBase.sol";
-import {MerkleProof} from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
+import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
+import { UmaMerkleOracleBase } from "./oracle/UmaMerkleOracleBase.sol";
+import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
-/// @title UmaMerkleActionVerifier
+/// @title UmaMerklizedStreamAV
 /// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
-contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
+contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Action parameters for this action verifier.
     /// @param ipfsCID The link to the ipfs doc which store an action description and more info
     struct ActionParams {
@@ -18,30 +18,23 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     }
 
     /// @notice Parameters used for user claims.
-    /// @param ratioOwed The ratio of rewards owed to the user.
-    /// @param incentives The incentive tokens to pay out to the AP.
+    /// @param incentives The total incentive tokens to pay out to the AP so far.
     /// @param incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
+    /// @param merkleProof A merkle proof for leaf = keccak256(abi.encode(ap, incentives, incentiveAmountsOwed))
     struct ClaimParams {
         address[] incentives;
         uint256[] incentiveAmountsOwed;
         bytes32[] merkleProof;
     }
 
-    /// @notice Emitted when a user successfully claims rewards using a valid Merkle leaf.
-    /// @param incentiveCampaignId The identifier of the offer in the Incentive Locker (incentiveCampaignId).
-    /// @param leaf The computed Merkle leaf (address and ratio) claimed by the user.
-    event UserClaimed(bytes32 indexed incentiveCampaignId, bytes32 indexed leaf);
-
-    /// @notice Error thrown if the signature is invalid (not currently used in this contract).
-    error InvalidSignature();
-
-    /// @notice Maps an incentiveCampaignId to its Merkle root. A zero value indicates no root has been set.
+    /// @notice Maps an incentiveCampaignId to its most recently updated merkle root. A zero value indicates no root has been set.
     mapping(bytes32 id => bytes32 merkleRoot) public incentiveCampaignIdToMerkleRoot;
 
-    /// @notice Tracks which leaves have already been claimed for a given incentiveCampaignId.
-    mapping(bytes32 id => mapping(bytes32 merkleLeaf => bool claimed)) public incentiveCampaignIdToMerkleLeafToClaimed;
+    /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed
+    /// @dev Facilitates streaming for incentives if merkle leaves contain a monotonically increasing incentive amount
+    mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToClaimState;
 
-    /// @notice Constructs the UmaMerkleActionVerifier.
+    /// @notice Constructs the UmaMerklizedStreamAV.
     /// @param _owner The initial owner of the contract.
     /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
     /// @param _incentiveLocker The address of the IncentiveLocker contract.
@@ -56,15 +49,8 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         address _bondCurrency,
         uint64 _assertionLiveness
     )
-        UmaMerkleOracleBase(
-            _owner,
-            _optimisticOracleV3,
-            _incentiveLocker,
-            _delegatedAsserter,
-            _bondCurrency,
-            _assertionLiveness
-        )
-    {}
+        UmaMerkleOracleBase(_owner, _optimisticOracleV3, _incentiveLocker, _delegatedAsserter, _bondCurrency, _assertionLiveness)
+    { }
 
     /// @dev Only the IncentiveLocker can call this function
     modifier onlyIncentiveLocker() {
@@ -77,7 +63,11 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @param _actionParams Arbitrary parameters defining the action.
     /// @param _ip The address placing the incentives for this action.
     /// @return valid Returns true if the market creation is valid.
-    function processIncentiveCampaignCreation(bytes32 _incentiveCampaignId, bytes memory _actionParams, address _ip)
+    function processIncentiveCampaignCreation(
+        bytes32 _incentiveCampaignId,
+        bytes memory _actionParams,
+        address _ip
+    )
         external
         view
         override
@@ -99,7 +89,13 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered,
         address _ip
-    ) external view override onlyIncentiveLocker returns (bool valid) {
+    )
+        external
+        view
+        override
+        onlyIncentiveLocker
+        returns (bool valid)
+    {
         valid = true;
     }
 
@@ -114,10 +110,15 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
         address[] memory _incentivesToRemove,
         uint256[] memory _incentiveAmountsToRemove,
         address _ip
-    ) external view override onlyIncentiveLocker returns (bool valid) {
+    )
+        external
+        view
+        override
+        onlyIncentiveLocker
+        returns (bool valid)
+    {
         // Get the necessary incentive campaign information after executing the removal
-        (,, uint32 startTimestamp, uint32 endTimestamp) =
-            incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
+        (,, uint32 startTimestamp, uint32 endTimestamp) = incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
 
         // Calculate the duration of the campaign
         uint256 totalCampaignDuration = endTimestamp - startTimestamp;
@@ -131,8 +132,7 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
                 incentiveLocker.getIncentiveAmountOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove[i]);
 
             // Calculate the minimum amount remaining
-            uint256 minIncentiveAmountRemaining =
-                (incentiveAmountOffered * remainingCampaignDuration) / totalCampaignDuration;
+            uint256 minIncentiveAmountRemaining = (incentiveAmountOffered * remainingCampaignDuration) / totalCampaignDuration;
 
             // If remaining is less than the min amount remaning, removal isn't valid
             if (incentiveAmountRemaining < minIncentiveAmountRemaining) {
@@ -150,7 +150,11 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @return valid Returns true if the claim is valid.
     /// @return incentives The incentive token addresses to be paid out to the AP.
     /// @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
-    function processClaim(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams)
+    function processClaim(
+        address _ap,
+        bytes32 _incentiveCampaignId,
+        bytes memory _claimParams
+    )
         external
         override
         onlyIncentiveLocker
@@ -158,6 +162,11 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
         ClaimParams memory claimParams = abi.decode(_claimParams, (ClaimParams));
+        // Verify each incentive to claim has a corresponding amount owed
+        uint256 numIncentivesToClaim = claimParams.incentives.length;
+        if (numIncentivesToClaim != claimParams.incentiveAmountsOwed.length) {
+            return (false, new address[](0), new uint256[](0));
+        }
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
@@ -165,20 +174,38 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
 
         // Compute the leaf from the user's address and ratio, then check if already claimed.
         bytes32 leaf = keccak256(abi.encode(_ap, claimParams.incentives, claimParams.incentiveAmountsOwed));
-        if (incentiveCampaignIdToMerkleLeafToClaimed[_incentiveCampaignId][leaf]) {
-            return (false, new address[](0), new uint256[](0));
-        }
 
         // Verify the proof against the stored Merkle root.
         valid = MerkleProof.verify(claimParams.merkleProof, merkleRoot, leaf);
         if (!valid) return (false, new address[](0), new uint256[](0));
 
-        // Mark the claim as used and emit an event.
-        incentiveCampaignIdToMerkleLeafToClaimed[_incentiveCampaignId][leaf] = true;
-        emit UserClaimed(_incentiveCampaignId, leaf);
+        // Mark the claim as processed and return what the user is still owed
+        uint256 numNonZeroIncentives = 0;
+        incentives = new address[](numIncentivesToClaim);
+        incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
+        for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
+            address incentive = claimParams.incentives[i];
+            uint256 incentiveAmountOwed = claimParams.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
+            if (incentiveAmountOwed > 0) {
+                incentives[numNonZeroIncentives] = incentive;
+                incentiveAmountsOwed[numNonZeroIncentives++] = incentiveAmountOwed;
+                incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive] = claimParams.incentiveAmountsOwed[i];
+            }
+        }
 
-        // Return the ratio of rewards owed if valid.
-        return (true, claimParams.incentives, claimParams.incentiveAmountsOwed);
+        // If nothing owed, claim is invalid
+        if (numNonZeroIncentives == 0) {
+            return (false, new address[](0), new uint256[](0));
+        }
+
+        // Resize arrays to the actual number of incentives owed
+        assembly ("memory-safe") {
+            mstore(incentives, numNonZeroIncentives)
+            mstore(incentiveAmountsOwed, numNonZeroIncentives)
+        }
+
+        // Return the incentives and amounts owed to the incentive locker
+        return (true, incentives, incentiveAmountsOwed);
     }
 
     /// @notice Internal hook that handles the resolution logic for a truthful assertion.
@@ -196,5 +223,5 @@ contract UmaMerkleActionVerifier is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Internal hook that handles dispute logic if an assertion is disputed.
     /// @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracleBase contract.
     /// @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
-    function _processAssertionDispute(MerkleRootAssertion storage _merkleRootAssertion) internal override {}
+    function _processAssertionDispute(MerkleRootAssertion storage _merkleRootAssertion) internal override { }
 }
