@@ -281,10 +281,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _incentivesToRemove Array of incentive token addresses to remove.
     /// @param _incentiveAmountsToRemove Array of amounts to remove for each incentive.
+    /// @param _recipient The address to send the removed incentives to.
     function removeIncentives(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesToRemove,
-        uint256[] memory _incentiveAmountsToRemove
+        uint256[] memory _incentiveAmountsToRemove,
+        address _recipient
     )
         external
         nonReentrant
@@ -318,7 +320,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
             // If the incentive is a token, refund incentives to the IP
             if (!isPointsProgram(incentive)) {
-                ERC20(incentive).safeTransfer(msg.sender, incentiveAmountRemoved);
+                ERC20(incentive).safeTransfer(_recipient, incentiveAmountRemoved);
             }
         }
 
@@ -327,6 +329,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
         require(valid, InvalidRemovalOfIncentives());
 
+        // Emit removal event
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
     }
 
