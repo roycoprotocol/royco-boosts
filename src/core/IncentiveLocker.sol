@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Ownable, Ownable2Step} from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import {ERC20} from "../../lib/solmate/src/tokens/ERC20.sol";
-import {SafeTransferLib} from "../../lib/solmate/src/utils/SafeTransferLib.sol";
-import {FixedPointMathLib} from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
-import {PointsRegistry} from "./base/PointsRegistry.sol";
-import {IActionVerifier} from "../interfaces/IActionVerifier.sol";
+import { Ownable, Ownable2Step } from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import { ReentrancyGuardTransient } from "../../../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import { ERC20 } from "../../lib/solmate/src/tokens/ERC20.sol";
+import { SafeTransferLib } from "../../lib/solmate/src/utils/SafeTransferLib.sol";
+import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
+import { PointsRegistry } from "./base/PointsRegistry.sol";
+import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
-contract IncentiveLocker is PointsRegistry, Ownable2Step {
+contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransient {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -86,36 +87,21 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param ip The address of the IP adding the incentives.
     /// @param incentivesOffered The array of incentive token addresses offered.
     /// @param incentiveAmountsOffered The array of amounts offered for each incentive token.
-    event IncentivesAdded(
-        bytes32 indexed incentiveCampaignId,
-        address indexed ip,
-        address[] incentivesOffered,
-        uint256[] incentiveAmountsOffered
-    );
+    event IncentivesAdded(bytes32 indexed incentiveCampaignId, address indexed ip, address[] incentivesOffered, uint256[] incentiveAmountsOffered);
 
     /// @notice Emitted when incentives are removed from an incentive campaign.
     /// @param incentiveCampaignId The incentive campaign identifier.
     /// @param ip The address of the IP adding the incentives.
     /// @param incentivesRemoved The array of incentive token addresses removed.
     /// @param incentiveAmountsRemoved The array of amounts removed for each incentive token.
-    event IncentivesRemoved(
-        bytes32 indexed incentiveCampaignId,
-        address indexed ip,
-        address[] incentivesRemoved,
-        uint256[] incentiveAmountsRemoved
-    );
+    event IncentivesRemoved(bytes32 indexed incentiveCampaignId, address indexed ip, address[] incentivesRemoved, uint256[] incentiveAmountsRemoved);
 
     /// @notice Emitted when incentives are claimed.
     /// @param incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param ap The address of the action provider claiming the incentives.
     /// @param incentiveAmountsPaid Array of net incentive amounts paid to the action provider.
     /// @param protocolFeesPaid Array of protocol fee amounts paid.
-    event IncentivesClaimed(
-        bytes32 indexed incentiveCampaignId,
-        address indexed ap,
-        uint256[] incentiveAmountsPaid,
-        uint256[] protocolFeesPaid
-    );
+    event IncentivesClaimed(bytes32 indexed incentiveCampaignId, address indexed ap, uint256[] incentiveAmountsPaid, uint256[] protocolFeesPaid);
 
     /// @notice Emitted when fees are claimed.
     /// @param claimant The address that claimed the fees.
@@ -130,9 +116,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @notice Emitted when the protocol fee claimant for a specific incentive campaign is set.
     /// @param incentiveCampaignId The incentive campaign identifier.
     /// @param newProtocolFeeClaimant Address allowed to claim protocol fees for the specified campaign.
-    event ProtocolFeeClaimantForCampaignSet(
-        bytes32 indexed incentiveCampaignId, address indexed newProtocolFeeClaimant
-    );
+    event ProtocolFeeClaimantForCampaignSet(bytes32 indexed incentiveCampaignId, address indexed newProtocolFeeClaimant);
 
     /// @notice Emitted when the default protocol fee rate is set.
     /// @param newDefaultProtocolFee The new default protocol fee rate (1e18 equals 100% fee).
@@ -195,16 +179,16 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
-    ) external returns (bytes32 incentiveCampaignId) {
+    )
+        external
+        nonReentrant
+        returns (bytes32 incentiveCampaignId)
+    {
         // Check that the duration is valid
         require(_startTimestamp <= _endTimestamp, InvalidCampaignInterval());
 
         // Compute a unique identifier for this incentive campaign
-        incentiveCampaignId = keccak256(
-            abi.encode(
-                ++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp
-            )
-        );
+        incentiveCampaignId = keccak256(abi.encode(++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp));
 
         // Store the incentive campaign information in persistent storage
         ICS storage ics = incentiveCampaignIdToICS[incentiveCampaignId];
@@ -218,9 +202,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         ics.actionParams = _actionParams;
 
         // Call hook on the Action Verifier to process the creation of this incentive campaign
-        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
-            incentiveCampaignId, _actionParams, msg.sender
-        );
+        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(incentiveCampaignId, _actionParams, msg.sender);
         require(valid, InvalidIncentiveCampaign());
 
         // Emit event for the addition of the incentive campaign
@@ -277,7 +259,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
-    ) external {
+    )
+        external
+        nonReentrant
+    {
         // Only the IP or a whitelisted coIP can add incentives
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
         require(msg.sender == ics.ip || ics.coIpToWhitelisted[msg.sender], OnlyIP());
@@ -286,9 +271,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
 
         // Call hook on the Action Verifier to process the addition of incentives
-        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesAdded(
-            _incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender
-        );
+        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
         require(valid, InvalidAdditionOfIncentives());
 
         emit IncentivesAdded(_incentiveCampaignId, msg.sender, _incentivesOffered, _incentiveAmountsOffered);
@@ -302,7 +285,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesToRemove,
         uint256[] memory _incentiveAmountsToRemove
-    ) external {
+    )
+        external
+        nonReentrant
+    {
         uint256 numIncentives = _incentivesToRemove.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsToRemove.length, ArrayLengthMismatch());
@@ -337,9 +323,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         }
 
         // Call hook on the Action Verifier to process the removal of incentives
-        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesRemoved(
-            _incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender
-        );
+        bool valid =
+            IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
         require(valid, InvalidRemovalOfIncentives());
 
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
@@ -349,9 +334,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param _ap The address of the action provider to claim incentives for.
     /// @param _incentiveCampaignIds Array of incentive campaign identifiers to claim incentives from.
     /// @param _claimParams Array of claim parameters for each incentive campaign.
-    function claimIncentives(address _ap, bytes32[] memory _incentiveCampaignIds, bytes[] memory _claimParams)
-        external
-    {
+    function claimIncentives(address _ap, bytes32[] memory _incentiveCampaignIds, bytes[] memory _claimParams) external {
         uint256 numClaims = _incentiveCampaignIds.length;
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
@@ -364,7 +347,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param _ap The address of the action provider to claim incentives for.
     /// @param _incentiveCampaignId Incentive campaign identifier to claim incentives from.
     /// @param _claimParams Claim parameters used by the action verifier to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams) public {
+    function claimIncentives(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams) public nonReentrant {
         // Retrieve the incentive campaign information.
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
@@ -388,7 +371,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @notice Claims accrued fees for a given incentive token.
     /// @param _incentiveToken The address of the incentive token.
     /// @param _to The recipient address for the claimed fees.
-    function claimFees(address _incentiveToken, address _to) external {
+    function claimFees(address _incentiveToken, address _to) external nonReentrant {
         uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
         delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
         ERC20(_incentiveToken).safeTransfer(_to, amount);
@@ -433,8 +416,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             startTimestamp = ics.startTimestamp;
             endTimestamp = ics.endTimestamp;
             protocolFee = ics.protocolFee;
-            protocolFeeClaimant =
-                ics.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ics.protocolFeeClaimant;
+            protocolFeeClaimant = ics.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ics.protocolFeeClaimant;
             actionVerifier = ics.actionVerifier;
             actionParams = ics.actionParams;
             incentivesOffered = ics.incentivesOffered;
@@ -535,7 +517,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @return ip The address of the incentive provider.
     /// @return incentiveAmountOffered Amount offered for the incentive.
     /// @return incentiveAmountRemaining Amount offered for the incentive.
-    function getIncentiveAmountOfferedAndRemaining(bytes32 _incentiveCampaignId, address _incentive)
+    function getIncentiveAmountOfferedAndRemaining(
+        bytes32 _incentiveCampaignId,
+        address _incentive
+    )
         external
         view
         returns (bool exists, address ip, uint256 incentiveAmountOffered, uint256 incentiveAmountRemaining)
@@ -567,10 +552,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @notice Sets the protocol fee recipient for a specific incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _protocolFeeClaimant Address allowed to claim protocol fees for the specified campaign.
-    function setProtocolFeeClaimantForCampaign(bytes32 _incentiveCampaignId, address _protocolFeeClaimant)
-        external
-        onlyOwner
-    {
+    function setProtocolFeeClaimantForCampaign(bytes32 _incentiveCampaignId, address _protocolFeeClaimant) external onlyOwner {
         incentiveCampaignIdToICS[_incentiveCampaignId].protocolFeeClaimant = _protocolFeeClaimant;
         emit ProtocolFeeClaimantForCampaignSet(_incentiveCampaignId, _protocolFeeClaimant);
     }
@@ -594,11 +576,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
     /// @param _ics Storage reference to the incentive campaign information.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Total amounts provided for each incentive (including fees).
-    function _pullIncentivesAndUpdateAccounting(
-        ICS storage _ics,
-        address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmountsOffered
-    ) internal {
+    function _pullIncentivesAndUpdateAccounting(ICS storage _ics, address[] memory _incentivesOffered, uint256[] memory _incentiveAmountsOffered) internal {
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
@@ -652,7 +630,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         address _protocolFeeClaimant,
         address[] memory _incentives,
         uint256[] memory _incentiveAmountsOwed
-    ) internal returns (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid) {
+    )
+        internal
+        returns (uint256[] memory incentiveAmountsPaid, uint256[] memory protocolFeesPaid)
+    {
         // Cache for gas op
         uint256 numIncentives = _incentives.length;
         address ip = _ics.ip;
@@ -677,9 +658,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
             incentiveAmountsPaid[i] = incentiveAmountOwed - protocolFeesPaid[i];
 
             // Push incentives to the action provider and account for fees.
-            _pushIncentivesAndAccountFees(
-                incentive, _ap, _protocolFeeClaimant, incentiveAmountsPaid[i], protocolFeesPaid[i]
-            );
+            _pushIncentivesAndAccountFees(incentive, _ap, _protocolFeeClaimant, incentiveAmountsPaid[i], protocolFeesPaid[i]);
         }
     }
 
@@ -695,7 +674,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step {
         address protocolFeeClaimant,
         uint256 incentiveAmount,
         uint256 protocolFeeAmount
-    ) internal {
+    )
+        internal
+    {
         // Take fees and push incentives to action provider
         if (isPointsProgram(incentive)) {
             // Award points to fee claimant
