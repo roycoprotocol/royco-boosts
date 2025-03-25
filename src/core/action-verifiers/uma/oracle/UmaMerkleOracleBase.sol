@@ -125,15 +125,21 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         assertionLiveness = _assertionLiveness;
     }
 
-    /// @notice Retrieves the Merkle root for a specified assertionId if the assertion is resolved.
-    /// @param assertionId The assertionId in the UMA system.
-    /// @return resolved A boolean indicating whether the assertion is resolved.
-    /// @return merkleRoot The resolved Merkle root (zero if unresolved).
-    function getMerkleRoot(bytes32 assertionId) external view virtual returns (bool resolved, bytes32 merkleRoot) {
-        if (!assertionIdToMerkleRootAssertion[assertionId].resolved) {
-            return (false, 0);
-        }
-        return (true, assertionIdToMerkleRootAssertion[assertionId].merkleRoot);
+    /// @notice Retrieves the state of a UMA assertion by its ID.
+    /// @dev Returns whether the assertion has been resolved along with its associated data.
+    /// @param _assertionId The unique identifier of the UMA assertion.
+    /// @return resolved Boolean indicating whether the assertion has been resolved.
+    /// @return incentiveCampaignId The incentive campaign identifier associated with the assertion.
+    /// @return merkleRoot The asserted Merkle root.
+    /// @return asserter The address that made the assertion.
+    function getAssertionState(bytes32 _assertionId)
+        external
+        view
+        virtual
+        returns (bool resolved, bytes32 incentiveCampaignId, bytes32 merkleRoot, address asserter)
+    {
+        MerkleRootAssertion storage assertion = assertionIdToMerkleRootAssertion[_assertionId];
+        return (assertion.resolved, assertion.incentiveCampaignId, assertion.merkleRoot, assertion.asserter);
     }
 
     /// @notice Asserts a new Merkle root using UMA's Optimistic Oracle V3.
