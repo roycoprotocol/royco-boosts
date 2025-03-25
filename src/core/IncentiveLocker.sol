@@ -228,7 +228,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         require(msg.sender == ics.ip, OnlyIP());
 
         uint256 numIps = _coIPs.length;
-        for (uint256 i = 0; i < _coIPs.length; ++i) {
+        for (uint256 i = 0; i < numIps; ++i) {
             ics.coIpToWhitelisted[_coIPs[i]] = true;
         }
 
@@ -244,7 +244,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         require(msg.sender == ics.ip, OnlyIP());
 
         uint256 numIps = _coIPs.length;
-        for (uint256 i = 0; i < _coIPs.length; ++i) {
+        for (uint256 i = 0; i < numIps; ++i) {
             ics.coIpToWhitelisted[_coIPs[i]] = false;
         }
 

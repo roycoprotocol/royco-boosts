@@ -117,12 +117,27 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     )
         Ownable(_owner)
     {
+        // Setup OO V3
         oo = OptimisticOracleV3Interface(_optimisticOracleV3);
         defaultIdentifier = oo.defaultIdentifier();
+
+        // Set Incentive Locker
         incentiveLocker = IncentiveLocker(_incentiveLocker);
-        whitelistAsserters(_whitelistedAsserters);
+
+        // Whitelist the specified asserters
+        uint256 numAsserters = _whitelistedAsserters.length;
+        for (uint256 i = 0; i < numAsserters; ++i) {
+            asserterToIsWhitelisted[_whitelistedAsserters[i]] = true;
+        }
+        emit AssertersWhitelisted(_whitelistedAsserters);
+
+        // Set bond currency
         bondCurrency = _bondCurrency;
+        emit BondCurrencyUpdated(_bondCurrency);
+
+        // Set assertion liveness
         assertionLiveness = _assertionLiveness;
+        emit AssertionLivenessUpdated(_assertionLiveness);
     }
 
     /// @notice Retrieves the state of a UMA assertion by its ID.
