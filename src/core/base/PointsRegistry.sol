@@ -125,17 +125,30 @@ abstract contract PointsRegistry {
         emit SpendCapsUpdated(_pointsId, _ips, _spendCaps);
     }
 
+    /// @notice Returns whether the points program exists or not.
     /// @param _pointsId The unique identifier of the points program.
     /// @return exists Boolean indicating if the specified points program exists.
     function isPointsProgram(address _pointsId) public view returns (bool exists) {
         exists = pointsIdToProgram[_pointsId].owner != address(0);
     }
 
+    /// @notice Returns the remaining amount of points the specified IP can spend for this program.
     /// @param _pointsId The unique identifier of the points program.
     /// @param _ip The incentive provider to return the spend cap for.
     /// @return spendCap The spend capacity of the IP for this points program.
     function getIpSpendCap(address _pointsId, address _ip) public view returns (uint256 spendCap) {
         spendCap = pointsIdToProgram[_pointsId].ipToSpendCap[_ip];
+    }
+
+    /// @notice Returns the metadata for the specified points program.
+    /// @param _pointsId The unique identifier of the points program.
+    /// @return owner The owner of the points program.
+    /// @return name The name of the points program.
+    /// @return symbol The symbol of the points program.
+    /// @return decimals The number of decimals for the points program.
+    function getPointsProgramMetadata(address _pointsId) public view returns (address owner, string memory name, string memory symbol, uint256 decimals) {
+        PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
+        return (pointsProgram.owner, pointsProgram.name, pointsProgram.symbol, pointsProgram.decimals);
     }
 
     /// @notice Deducts points from an IP's spending cap when points are spent.
