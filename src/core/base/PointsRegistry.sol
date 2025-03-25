@@ -25,6 +25,7 @@ abstract contract PointsRegistry {
     mapping(address pointsId => PointsProgram pointsProgram) public pointsIdToProgram;
 
     /// @notice Emitted when a new points program is created.
+    /// @param pointsId The unique identifier of the points program.
     /// @param owner The address that created the points program.
     /// @param name The name of the points program.
     /// @param symbol The symbol of the points program.
@@ -32,26 +33,26 @@ abstract contract PointsRegistry {
     /// @param whitelistedIPs The list of whitelisted IP addresses.
     /// @param spendCaps The corresponding spending caps for each whitelisted IP.
     event PointsProgramCreated(
-        address owner, string name, string symbol, uint256 decimals, address[] whitelistedIPs, uint256[] spendCaps
+        address indexed pointsId, address indexed owner, string indexed name, string symbol, uint256 decimals, address[] whitelistedIPs, uint256[] spendCaps
     );
 
     /// @notice Emitted when the spending caps for a points program are updated.
     /// @param pointsId The unique identifier of the points program.
     /// @param ips The list of IP addresses whose spend caps were updated.
     /// @param spendCaps The new spending caps corresponding to each IP.
-    event SpendCapsUpdated(address pointsId, address[] ips, uint256[] spendCaps);
+    event SpendCapsUpdated(address indexed pointsId, address[] ips, uint256[] spendCaps);
 
     /// @notice Emitted when points are spent.
     /// @param pointsId The unique identifier of the points program.
     /// @param ip The IP address that spent points.
     /// @param amount The amount of points spent.
-    event PointsSpent(address pointsId, address ip, uint256 amount);
+    event PointsSpent(address indexed pointsId, address indexed ip, uint256 amount);
 
     /// @notice Emitted when points are awarded.
     /// @param pointsId The unique identifier of the points program.
     /// @param recipient The address receiving the points award.
     /// @param amount The amount of points awarded.
-    event Award(address pointsId, address recipient, uint256 amount);
+    event Award(address indexed pointsId, address indexed recipient, uint256 amount);
 
     /// @notice Thrown when provided arrays have mismatched lengths.
     error ArrayLengthMismatch();
@@ -77,7 +78,10 @@ abstract contract PointsRegistry {
         uint256 _decimals,
         address[] calldata _whitelistedIPs,
         uint256[] calldata _spendCaps
-    ) external returns (address pointsId) {
+    )
+        external
+        returns (address pointsId)
+    {
         // Check that each whitelisted IP has a cap
         uint256 whitelistLength = _whitelistedIPs.length;
         require(whitelistLength == _spendCaps.length, ArrayLengthMismatch());
@@ -95,7 +99,7 @@ abstract contract PointsRegistry {
         }
 
         // Emit creation event
-        emit PointsProgramCreated(msg.sender, _name, _symbol, _decimals, _whitelistedIPs, _spendCaps);
+        emit PointsProgramCreated(pointsId, msg.sender, _name, _symbol, _decimals, _whitelistedIPs, _spendCaps);
     }
 
     /// @notice Updates the spending caps for an existing points program.

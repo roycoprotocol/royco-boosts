@@ -2,13 +2,13 @@
 pragma solidity ^0.8.0;
 
 import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
-import { UmaMerkleOracleBase } from "./oracle/UmaMerkleOracleBase.sol";
+import { UmaMerkleOracleBase } from "./base/UmaMerkleOracleBase.sol";
 import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 
-/// @title UmaMerklizedStreamAV
+/// @title UmaMerkleStreamAV
 /// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
-contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
+contract UmaMerkleStreamAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Action parameters for this action verifier.
     /// @param ipfsCID The link to the ipfs doc which store an action description and more info
     struct ActionParams {
@@ -34,7 +34,7 @@ contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
     /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
     mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToClaimState;
 
-    /// @notice Constructs the UmaMerklizedStreamAV.
+    /// @notice Constructs the UmaMerkleStreamAV.
     /// @param _owner The initial owner of the contract.
     /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
     /// @param _incentiveLocker The address of the IncentiveLocker contract.
