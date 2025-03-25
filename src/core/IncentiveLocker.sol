@@ -568,6 +568,14 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         }
     }
 
+    /// @notice Gets if a CoIP is whitelisted to add incentives to the specified campaign
+    /// @param _incentiveCampaignId The incentive campaign identifier.
+    /// @param _coIP Address to check if it is whitelisted as a coIP.
+    /// @return whitelisted Boolean indication whether the coIP is whitelisted.
+    function isCoIP(bytes32 _incentiveCampaignId, address _coIP) external returns (bool whitelisted) {
+        return incentiveCampaignIdToICS[_incentiveCampaignId].coIpToWhitelisted[_coIP];
+    }
+
     /// @notice Returns the duration for the specified incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
