@@ -175,6 +175,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         // Store the assertion data.
         assertionIdToMerkleRootAssertion[assertionId] = MerkleRootAssertion(_incentiveCampaignId, _merkleRoot, msg.sender, false);
 
+        // Emit assertion event
         emit MerkleRootAsserted(_incentiveCampaignId, _merkleRoot, msg.sender, assertionId);
     }
 
@@ -250,6 +251,12 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         emit AssertionLivenessUpdated(_assertionLiveness);
     }
 
+    /// @notice Generates the claim data to be sent to UMA's Optimistic Oracle.
+    /// @dev Encodes the Merkle root, incentive campaign ID, action parameters, caller address, and timestamp into a single bytes string.
+    /// @param _merkleRoot The asserted Merkle root.
+    /// @param _incentiveCampaignId The identifier for the incentive campaign.
+    /// @param _actionParams The action parameters for this claim.
+    /// @return claim The generated claim as an encoded bytes string.
     function _generateUmaClaim(bytes32 _merkleRoot, bytes32 _incentiveCampaignId, bytes memory _actionParams) internal virtual returns (bytes memory claim) {
         claim = abi.encodePacked(
             "Merkle Root asserted: 0x",
