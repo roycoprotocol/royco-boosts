@@ -30,8 +30,8 @@ contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Maps an incentiveCampaignId to its most recently updated merkle root. A zero value indicates no root has been set.
     mapping(bytes32 id => bytes32 merkleRoot) public incentiveCampaignIdToMerkleRoot;
 
-    /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed
-    /// @dev Facilitates streaming for incentives if merkle leaves contain a monotonically increasing incentive amount
+    /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed.
+    /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
     mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToClaimState;
 
     /// @notice Constructs the UmaMerklizedStreamAV.
@@ -124,18 +124,18 @@ contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
         uint256 totalCampaignDuration = endTimestamp - startTimestamp;
         uint256 remainingCampaignDuration = endTimestamp - block.timestamp;
 
+        // Get the relevant incentive campaign incentive info to validate the removal
+        (,, uint256[] memory incentiveAmountsOffered, uint256[] memory incentiveAmountsRemaining) =
+            incentiveLocker.getIncentiveAmountsOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove);
+
         // Make sure that the incentives remaining are greater than or equal to the total incentives spent so far
-        // This AV is configured to stream incentives for the entire campaign duration, so you can't remove more than what has been streamed
+        // This AV is configured to stream incentives for the entire campaign duration, so you can't remove more than what has already been streamed to APs
         uint256 numIncentivesToRemove = _incentivesToRemove.length;
         for (uint256 i = 0; i < numIncentivesToRemove; ++i) {
-            (,, uint256 incentiveAmountOffered, uint256 incentiveAmountRemaining) =
-                incentiveLocker.getIncentiveAmountOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove[i]);
-
             // Calculate the minimum amount remaining
-            uint256 minIncentiveAmountRemaining = (incentiveAmountOffered * remainingCampaignDuration) / totalCampaignDuration;
-
+            uint256 minIncentiveAmountRemaining = (incentiveAmountsOffered[i] * remainingCampaignDuration) / totalCampaignDuration;
             // If remaining is less than the min amount remaning, removal isn't valid
-            if (incentiveAmountRemaining < minIncentiveAmountRemaining) {
+            if (incentiveAmountsRemaining[i] < minIncentiveAmountRemaining) {
                 return false;
             }
         }
