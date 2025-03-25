@@ -38,18 +38,18 @@ contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _owner The initial owner of the contract.
     /// @param _optimisticOracleV3 The address of the Optimistic Oracle V3 contract.
     /// @param _incentiveLocker The address of the IncentiveLocker contract.
-    /// @param _delegatedAsserter The initial delegated asserter address.
+    /// @param _whitelistedAsserters An array of whitelisted asserters.
     /// @param _bondCurrency The ERC20 token address used for bonding in UMA.
     /// @param _assertionLiveness The liveness (in seconds) for UMA assertions.
     constructor(
         address _owner,
         address _optimisticOracleV3,
         address _incentiveLocker,
-        address _delegatedAsserter,
+        address[] memory _whitelistedAsserters,
         address _bondCurrency,
         uint64 _assertionLiveness
     )
-        UmaMerkleOracleBase(_owner, _optimisticOracleV3, _incentiveLocker, _delegatedAsserter, _bondCurrency, _assertionLiveness)
+        UmaMerkleOracleBase(_owner, _optimisticOracleV3, _incentiveLocker, _whitelistedAsserters, _bondCurrency, _assertionLiveness)
     { }
 
     /// @dev Only the IncentiveLocker can call this function
@@ -185,10 +185,13 @@ contract UmaMerklizedStreamAV is IActionVerifier, UmaMerkleOracleBase {
         incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
             address incentive = claimParams.incentives[i];
-            uint256 incentiveAmountOwed = claimParams.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
-            if (incentiveAmountOwed > 0) {
+            // Calculate the unclaimed incentive amount: total owed - already claimed
+            uint256 unclaimedIncentiveAmount = claimParams.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
+            if (unclaimedIncentiveAmount > 0) {
+                // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
-                incentiveAmountsOwed[numNonZeroIncentives++] = incentiveAmountOwed;
+                incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
+                // Mark everything as claimed
                 incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive] = claimParams.incentiveAmountsOwed[i];
             }
         }
