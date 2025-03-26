@@ -207,6 +207,27 @@ contract RoycoTestBase is Test {
         }
     }
 
+    function subtractIncentives(
+        address[] memory tokens,
+        uint256[] memory amounts,
+        address[] memory removedTokens,
+        uint256[] memory removalAmounts
+    )
+        internal
+        pure
+        returns (uint256[] memory expectedAmounts)
+    {
+        expectedAmounts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            expectedAmounts[i] = amounts[i];
+            for (uint256 j = 0; j < removedTokens.length; j++) {
+                if (tokens[i] == removedTokens[j]) {
+                    expectedAmounts[i] -= removalAmounts[j];
+                }
+            }
+        }
+    }
+
     function isDuplicateToken(address token, address[] memory incentives, uint8 currentIndex) public pure returns (bool) {
         for (uint8 j = 0; j < currentIndex; j++) {
             if (incentives[j] == token) {

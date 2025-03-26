@@ -124,7 +124,7 @@ contract UmaMerkleStreamAV is IActionVerifier, UmaMerkleOracleBase {
         uint256 totalCampaignDuration = endTimestamp - startTimestamp;
         uint256 remainingCampaignDuration = endTimestamp - block.timestamp;
 
-        // Get the relevant incentive campaign incentive info to validate the removal
+        // Get the relevant incentive campaign state after the removal has been applied to validate the removal
         (,, uint256[] memory incentiveAmountsOffered, uint256[] memory incentiveAmountsRemaining) =
             incentiveLocker.getIncentiveAmountsOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove);
 
@@ -132,8 +132,9 @@ contract UmaMerkleStreamAV is IActionVerifier, UmaMerkleOracleBase {
         // This AV is configured to stream incentives for the entire campaign duration, so you can't remove more than what has already been streamed to APs
         uint256 numIncentivesToRemove = _incentivesToRemove.length;
         for (uint256 i = 0; i < numIncentivesToRemove; ++i) {
-            // Calculate the minimum amount remaining
-            uint256 minIncentiveAmountRemaining = (incentiveAmountsOffered[i] * remainingCampaignDuration) / totalCampaignDuration;
+            // The minimum amount remaining = total amount already streamed and unstreamed - unstreamed.
+            uint256 unstreamedIncentives = ((incentiveAmountsOffered[i] * remainingCampaignDuration) / totalCampaignDuration);
+            uint256 minIncentiveAmountRemaining = incentiveAmountsOffered[i] - unstreamedIncentives;
             // If remaining is less than the min amount remaning, removal isn't valid
             if (incentiveAmountsRemaining[i] < minIncentiveAmountRemaining) {
                 return false;

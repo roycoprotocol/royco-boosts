@@ -30,6 +30,16 @@ contract Test_IncentiveLocker is RoycoTestBase {
 
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, _numIncentivesOffered);
 
+        for (uint256 i = 0; i < incentivesOffered.length; ++i) {
+            if (incentiveLocker.isPointsProgram(incentivesOffered[i])) {
+                vm.expectEmit(true, true, true, true);
+                emit PointsRegistry.PointsSpent(incentivesOffered[i], _ip, incentiveAmountsOffered[i]);
+            } else {
+                vm.expectEmit(true, true, true, true);
+                emit ERC20.Transfer(_ip, address(incentiveLocker), incentiveAmountsOffered[i]);
+            }
+        }
+
         vm.expectEmit(false, true, true, true);
         emit IncentiveLocker.IncentiveCampaignCreated(
             bytes32(0),
@@ -119,30 +129,34 @@ contract Test_IncentiveLocker is RoycoTestBase {
         }
     }
 
-    function test_AddIncentives() public {
+    function test_AddIncentives_UmaMerkleStreamAV(uint8 _numAdded) public {
+        _numAdded = uint8(bound(_numAdded, 1, 10));
+
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
             address(umaMerkleStreamAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), initialIncentives, initialAmounts
         );
 
-        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
+
+        for (uint256 i = 0; i < addedIncentives.length; ++i) {
+            if (incentiveLocker.isPointsProgram(addedIncentives[i])) {
+                vm.expectEmit(true, true, true, true);
+                emit PointsRegistry.PointsSpent(addedIncentives[i], address(this), addedAmounts[i]);
+            } else {
+                vm.expectEmit(true, true, true, true);
+                emit ERC20.Transfer(address(this), address(incentiveLocker), addedAmounts[i]);
+            }
+        }
+
+        vm.expectEmit(true, true, true, true);
+        emit IncentiveLocker.IncentivesAdded(incentiveCampaignId, address(this), addedIncentives, addedAmounts);
 
         incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts);
 
-        (
-            bool exists,
-            address ip,
-            uint32 startTimestamp,
-            uint32 endTimestamp,
-            uint64 protocolFee,
-            address protocolFeeClaimant,
-            address actionVerifier,
-            bytes memory actionParams,
-            address[] memory storedIncentives,
-            uint256[] memory storedAmounts,
-            uint256[] memory incentiveAmountsRemaining
-        ) = incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
+        (bool exists,,,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
+            incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
 
         assertTrue(exists);
         (address[] memory expectedTokens, uint256[] memory expectedAmounts) = mergeIncentives(initialIncentives, initialAmounts, addedIncentives, addedAmounts);
@@ -152,5 +166,57 @@ contract Test_IncentiveLocker is RoycoTestBase {
             assertEq(storedAmounts[i], expectedAmounts[i]);
             assertEq(incentiveAmountsRemaining[i], expectedAmounts[i]);
         }
+    }
+
+    function test_RemoveIncentives_UmaMerkleStreamAV(uint8 _numRemoved, address _recipient, uint32 _endTimestamp, uint256 _removalTimestamp) public {
+        vm.assume(_recipient != address(0));
+        _numRemoved = uint8(bound(_numRemoved, 1, 10));
+        uint32 startTimestamp = uint32(block.timestamp);
+        _endTimestamp = uint32(bound(_endTimestamp, startTimestamp + 2, startTimestamp + 90 days));
+        _removalTimestamp = bound(_removalTimestamp, startTimestamp, _endTimestamp - 1);
+
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+
+        bytes32 incentiveCampaignId =
+            incentiveLocker.createIncentiveCampaign(address(umaMerkleStreamAV), new bytes(0), startTimestamp, _endTimestamp, initialIncentives, initialAmounts);
+
+        vm.warp(_removalTimestamp);
+
+        uint256 numToRemove = _numRemoved;
+        address[] memory removedIncentives = new address[](numToRemove);
+        uint256[] memory removalAmounts = new uint256[](numToRemove);
+        for (uint256 i = 0; i < numToRemove; i++) {
+            removedIncentives[i] = initialIncentives[i];
+            uint256 maxRemovable = (initialAmounts[i] * (_endTimestamp - _removalTimestamp)) / (_endTimestamp - startTimestamp);
+            removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, _removalTimestamp))), 0, maxRemovable);
+        }
+
+        for (uint256 i = 0; i < removedIncentives.length; ++i) {
+            if (!incentiveLocker.isPointsProgram(removedIncentives[i])) {
+                vm.expectEmit(true, true, true, true, address(removedIncentives[i]));
+                emit ERC20.Transfer(address(incentiveLocker), _recipient, removalAmounts[i]);
+            }
+        }
+
+        vm.expectEmit(true, true, true, true);
+        emit IncentiveLocker.IncentivesRemoved(incentiveCampaignId, address(this), removedIncentives, removalAmounts);
+
+        incentiveLocker.removeIncentives(incentiveCampaignId, removedIncentives, removalAmounts, _recipient);
+
+        (bool exists,,,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
+            incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
+
+        assertTrue(exists);
+        uint256[] memory expectedAmounts = new uint256[](initialIncentives.length);
+        for (uint256 i = 0; i < initialIncentives.length; i++) {
+            if (i < numToRemove) {
+                expectedAmounts[i] = initialAmounts[i] - removalAmounts[i];
+            } else {
+                expectedAmounts[i] = initialAmounts[i];
+            }
+        }
+        assertEq(storedIncentives, initialIncentives);
+        assertEq(storedAmounts, initialAmounts);
+        assertEq(incentiveAmountsRemaining, expectedAmounts);
     }
 }

@@ -16,7 +16,17 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     using FixedPointMathLib for uint256;
 
     /// @notice Incentive Campaign State - The state of an incentive campaign on Royco
-    /// @dev Contains the incentive provider, action verifier, offered incentive tokens, and fee breakdown mappings.
+    /// @custom:field ip The incentive provider who created the campaign.
+    /// @custom:field startTimestamp The start timestamp of the campaign.
+    /// @custom:field endTimestamp The endTimestamp of the campaign.
+    /// @custom:field protocolFeeClaimant The protocol fee claimant entitled to protocol fees for this campaign.
+    /// @custom:field protocolFee The protocol fee for this campaign.
+    /// @custom:field actionVerifier The address of the ActionVerifier implementing the hooks to facilitate campaign creation, modifications, and payouts.
+    /// @custom:field actionParams Arbitrary bytes used to specify the incentivized action. Must be parsable by the ActionVerifier.
+    /// @custom:field incentivesOffered An array of points and/or token incentives offered by this campaign.
+    /// @custom:mapping incentiveToTotalAmountOffered Total amounts allocated to APs + fees (per incentive). Monotonically increasing.
+    /// @custom:mapping incentiveToAmountRemaining Total amounts unspent to APs + fees (per incentive). Must always be <= the value in the total amount mapping.
+    /// @custom:mapping coIpToWhitelisted IPs that are whitelisted to add incentives to this incentive campaign. They cannot remove incentives.
     struct ICS {
         address ip;
         uint32 startTimestamp;
@@ -26,12 +36,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         address actionVerifier;
         bytes actionParams;
         address[] incentivesOffered;
-        // Total amounts allocated to APs + fees (per incentive) during the lifetime of this campaign
         mapping(address incentive => uint256 amount) incentiveToTotalAmountOffered;
-        // Total amounts still spendable to APs + fees (per incentive)
-        // The value for an incentive in this mapping must always be <= incentiveToTotalAmountOffered[incentive]
         mapping(address incentive => uint256 amount) incentiveToAmountRemaining;
-        // IPs that are whitelisted to add incentives to this incentive campaign
         mapping(address coIP => bool whitelisted) coIpToWhitelisted;
     }
 
