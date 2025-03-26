@@ -24,11 +24,11 @@ contract Test_IncentiveLocker is RoycoTestBase {
         external
         prankModifier(_ip)
     {
-        vm.assume(_ip != address(0));
+        vm.assume(_ip != address(0) && _ip != address(1));
         _startTimestamp = uint32(bound(_startTimestamp, 0, _endTimestamp));
         _numIncentivesOffered = uint8(bound(_numIncentivesOffered, 1, 10));
 
-        (address[] memory generatedIncentives, uint256[] memory generatedAmounts) = _generateRandomIncentives(_ip, _numIncentivesOffered);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, _numIncentivesOffered);
 
         vm.expectEmit(false, true, true, true);
         emit IncentiveLocker.IncentiveCampaignCreated(
@@ -39,12 +39,12 @@ contract Test_IncentiveLocker is RoycoTestBase {
             _startTimestamp,
             _endTimestamp,
             DEFAULT_PROTOCOL_FEE,
-            generatedIncentives,
-            generatedAmounts
+            incentivesOffered,
+            incentiveAmountsOffered
         );
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleStreamAV), _actionParams, _startTimestamp, _endTimestamp, generatedIncentives, generatedAmounts
+            address(umaMerkleStreamAV), _actionParams, _startTimestamp, _endTimestamp, incentivesOffered, incentiveAmountsOffered
         );
 
         (
@@ -69,9 +69,9 @@ contract Test_IncentiveLocker is RoycoTestBase {
         assertEq(protocolFeeClaimant, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS);
         assertEq(actionVerifier, address(umaMerkleStreamAV));
         assertEq(actionParams, _actionParams);
-        assertEq(storedIncentivesOffered, generatedIncentives);
-        assertEq(storedIncentiveAmountsOffered, generatedAmounts);
-        assertEq(incentiveAmountsRemaining, generatedAmounts);
+        assertEq(storedIncentivesOffered, incentivesOffered);
+        assertEq(storedIncentiveAmountsOffered, incentiveAmountsOffered);
+        assertEq(incentiveAmountsRemaining, incentiveAmountsOffered);
     }
 
     function test_AddCoIPs(address[] memory _coIPs) public {
@@ -116,6 +116,41 @@ contract Test_IncentiveLocker is RoycoTestBase {
         for (uint256 i = 0; i < _numRemoved; i++) {
             bool status = incentiveLocker.isCoIP(incentiveCampaignId, _coIPs[i]);
             assertFalse(status);
+        }
+    }
+
+    function test_AddIncentives() public {
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
+            address(umaMerkleStreamAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), initialIncentives, initialAmounts
+        );
+
+        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), 10);
+
+        incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts);
+
+        (
+            bool exists,
+            address ip,
+            uint32 startTimestamp,
+            uint32 endTimestamp,
+            uint64 protocolFee,
+            address protocolFeeClaimant,
+            address actionVerifier,
+            bytes memory actionParams,
+            address[] memory storedIncentives,
+            uint256[] memory storedAmounts,
+            uint256[] memory incentiveAmountsRemaining
+        ) = incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
+
+        assertTrue(exists);
+        (address[] memory expectedTokens, uint256[] memory expectedAmounts) = mergeIncentives(initialIncentives, initialAmounts, addedIncentives, addedAmounts);
+        assertEq(storedIncentives.length, expectedTokens.length);
+        for (uint256 i = 0; i < expectedTokens.length; i++) {
+            assertEq(storedIncentives[i], expectedTokens[i]);
+            assertEq(storedAmounts[i], expectedAmounts[i]);
+            assertEq(incentiveAmountsRemaining[i], expectedAmounts[i]);
         }
     }
 }

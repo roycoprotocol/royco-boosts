@@ -125,7 +125,7 @@ contract RoycoTestBase is Test {
                 uint256 tokenIndex = rand % MAINNET_TOKENS.length;
                 address candidate = MAINNET_TOKENS[tokenIndex];
                 // Avoid duplicate tokens.
-                while (_isDuplicateToken(candidate, incentivesOffered, i)) {
+                while (isDuplicateToken(candidate, incentivesOffered, i)) {
                     rand = uint256(keccak256(abi.encodePacked(rand)));
                     tokenIndex = rand % MAINNET_TOKENS.length;
                     candidate = MAINNET_TOKENS[tokenIndex];
@@ -155,7 +155,59 @@ contract RoycoTestBase is Test {
         return wallet;
     }
 
-    function _isDuplicateToken(address token, address[] memory incentives, uint8 currentIndex) public pure returns (bool) {
+    function mergeIncentives(
+        address[] memory tokens1,
+        uint256[] memory amounts1,
+        address[] memory tokens2,
+        uint256[] memory amounts2
+    )
+        internal
+        pure
+        returns (address[] memory mergedTokens, uint256[] memory mergedAmounts)
+    {
+        uint256 maxLen = tokens1.length + tokens2.length;
+        address[] memory tempTokens = new address[](maxLen);
+        uint256[] memory tempAmounts = new uint256[](maxLen);
+        uint256 count = 0;
+        for (uint256 i = 0; i < tokens1.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < count; j++) {
+                if (tempTokens[j] == tokens1[i]) {
+                    tempAmounts[j] += amounts1[i];
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                tempTokens[count] = tokens1[i];
+                tempAmounts[count] = amounts1[i];
+                count++;
+            }
+        }
+        for (uint256 i = 0; i < tokens2.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < count; j++) {
+                if (tempTokens[j] == tokens2[i]) {
+                    tempAmounts[j] += amounts2[i];
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                tempTokens[count] = tokens2[i];
+                tempAmounts[count] = amounts2[i];
+                count++;
+            }
+        }
+        mergedTokens = new address[](count);
+        mergedAmounts = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            mergedTokens[i] = tempTokens[i];
+            mergedAmounts[i] = tempAmounts[i];
+        }
+    }
+
+    function isDuplicateToken(address token, address[] memory incentives, uint8 currentIndex) public pure returns (bool) {
         for (uint8 j = 0; j < currentIndex; j++) {
             if (incentives[j] == token) {
                 return true;
