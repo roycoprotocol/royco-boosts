@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { Ownable, Ownable2Step } from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import { ReentrancyGuardTransient } from "../../../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import { Initializable } from "../../../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
+import { Ownable2StepUpgradeable } from "../../../lib/openzeppelin-contracts-upgradeable/contracts/access/Ownable2StepUpgradeable.sol";
+import { UUPSUpgradeable } from "../../../lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { ReentrancyGuardTransientUpgradeable } from "../../../lib/openzeppelin-contracts-upgradeable/contracts/utils/ReentrancyGuardTransientUpgradeable.sol";
 import { ERC20 } from "../../lib/solmate/src/tokens/ERC20.sol";
 import { SafeTransferLib } from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
@@ -11,7 +13,13 @@ import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title IncentiveLocker
 /// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
-contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransient {
+contract IncentiveLocker is 
+    Initializable, 
+    PointsRegistry, 
+    Ownable2StepUpgradeable, 
+    UUPSUpgradeable,
+    ReentrancyGuardTransientUpgradeable 
+{
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -157,11 +165,28 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when there is an invalid removal of incentives.
     error InvalidRemovalOfIncentives();
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
     /// @param _defaultProtocolFeeClaimant Default address allowed to claim protocol fees.
     /// @param _defaultProtocolFee Default protocol fee rate (1e18 equals 100% fee).
-    constructor(address _owner, address _defaultProtocolFeeClaimant, uint64 _defaultProtocolFee) Ownable(_owner) {
+    function initialize(
+        address _owner, 
+        address _defaultProtocolFeeClaimant, 
+        uint64 _defaultProtocolFee
+    ) public initializer {
+        __Ownable2Step_init();
+        __UUPSUpgradeable_init();
+        __ReentrancyGuardTransient_init();
+        // __PointsRegistry_init();
+
+        // Transfer ownership to the provided owner
+        _transferOwnership(_owner);
+        
         // Set the initial contract state
         defaultProtocolFeeClaimant = _defaultProtocolFeeClaimant;
         emit DefaultProtocolFeeClaimantSet(_defaultProtocolFeeClaimant);
@@ -169,6 +194,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         defaultProtocolFee = _defaultProtocolFee;
         emit DefaultProtocolFeeSet(_defaultProtocolFee);
     }
+
+    /// @notice Function that authorizes upgrades, only owner can call
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
