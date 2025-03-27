@@ -140,7 +140,7 @@ contract RoycoTestBase is Test {
                 // Create a points program with dummy parameters.
                 string memory name = "RandomPoints";
                 string memory symbol = "RPTS";
-                uint256 decimals = 18;
+                uint8 decimals = 18;
                 address pointsId = incentiveLocker.createPointsProgram(name, symbol, decimals, new address[](0), new uint256[](0));
                 incentivesOffered[i] = pointsId;
                 incentiveAmountsOffered[i] = bound(rand, 1e18, 10_000_000e18);

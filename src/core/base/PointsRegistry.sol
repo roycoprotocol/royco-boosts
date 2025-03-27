@@ -14,7 +14,7 @@ abstract contract PointsRegistry {
         address owner;
         string name;
         string symbol;
-        uint256 decimals;
+        uint8 decimals;
         mapping(address ip => uint256 spendCap) ipToSpendCap;
     }
 
@@ -33,7 +33,7 @@ abstract contract PointsRegistry {
     /// @param whitelistedIPs The list of whitelisted IP addresses.
     /// @param spendCaps The corresponding spending caps for each whitelisted IP.
     event PointsProgramCreated(
-        address indexed pointsId, address indexed owner, string indexed name, string symbol, uint256 decimals, address[] whitelistedIPs, uint256[] spendCaps
+        address indexed pointsId, address indexed owner, string name, string indexed symbol, uint8 decimals, address[] whitelistedIPs, uint256[] spendCaps
     );
 
     /// @notice Emitted when the spending caps for a points program are updated.
@@ -75,7 +75,7 @@ abstract contract PointsRegistry {
     function createPointsProgram(
         string memory _name,
         string memory _symbol,
-        uint256 _decimals,
+        uint8 _decimals,
         address[] calldata _whitelistedIPs,
         uint256[] calldata _spendCaps
     )
@@ -94,6 +94,7 @@ abstract contract PointsRegistry {
         pointsProgram.owner = msg.sender;
         pointsProgram.name = _name;
         pointsProgram.symbol = _symbol;
+        pointsProgram.decimals = _decimals;
         for (uint256 i = 0; i < whitelistLength; ++i) {
             pointsProgram.ipToSpendCap[_whitelistedIPs[i]] = _spendCaps[i];
         }
@@ -146,7 +147,7 @@ abstract contract PointsRegistry {
     /// @return name The name of the points program.
     /// @return symbol The symbol of the points program.
     /// @return decimals The number of decimals for the points program.
-    function getPointsProgramMetadata(address _pointsId) public view returns (address owner, string memory name, string memory symbol, uint256 decimals) {
+    function getPointsProgramMetadata(address _pointsId) public view returns (address owner, string memory name, string memory symbol, uint8 decimals) {
         PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
         return (pointsProgram.owner, pointsProgram.name, pointsProgram.symbol, pointsProgram.decimals);
     }

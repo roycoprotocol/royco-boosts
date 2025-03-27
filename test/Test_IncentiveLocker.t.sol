@@ -84,6 +84,42 @@ contract Test_IncentiveLocker is RoycoTestBase {
         assertEq(incentiveAmountsRemaining, incentiveAmountsOffered);
     }
 
+    function test_PointsProgramCreation(
+        address _ip,
+        string memory _name,
+        string memory _symbol,
+        uint8 _decimals,
+        uint8 _numWhitelistedIps
+    )
+        external
+        prankModifier(_ip)
+    {
+        vm.assume(_ip != address(0));
+
+        address[] memory whitelistedIps = new address[](_numWhitelistedIps);
+        uint256[] memory spendCaps = new uint256[](_numWhitelistedIps);
+
+        for (uint256 i = 0; i < _numWhitelistedIps; ++i) {
+            whitelistedIps[i] = address(bytes20(keccak256(abi.encode(_ip, _numWhitelistedIps, i))));
+            spendCaps[i] = uint256(keccak256(abi.encode(_ip, _numWhitelistedIps, i, whitelistedIps[i])));
+        }
+
+        vm.expectEmit(false, true, true, false);
+        emit PointsRegistry.PointsProgramCreated(address(0), _ip, _name, _symbol, _decimals, whitelistedIps, spendCaps);
+        address pointsId = incentiveLocker.createPointsProgram(_name, _symbol, _decimals, whitelistedIps, spendCaps);
+
+        assertTrue(incentiveLocker.isPointsProgram(pointsId));
+        (address owner, string memory name, string memory symbol, uint8 decimals) = incentiveLocker.getPointsProgramMetadata(pointsId);
+        assertEq(owner, _ip);
+        assertEq(name, _name);
+        assertEq(symbol, _symbol);
+        assertEq(decimals, _decimals);
+
+        for (uint256 i = 0; i < _numWhitelistedIps; ++i) {
+            assertEq(incentiveLocker.getIpSpendCap(pointsId, whitelistedIps[i]), spendCaps[i]);
+        }
+    }
+
     function test_AddCoIPs(address[] memory _coIPs) public {
         uint256 len = bound(_coIPs.length, 1, 100);
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
