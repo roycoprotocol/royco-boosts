@@ -1,4 +1,4 @@
-# Royco V2: The Incentivize Anything Protocol
+# Royco V2: The Incentivize Anything Protocol [![Tests](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml)
 ![Royco Banner](./roycobanner.png)
 
 Royco V2 allows anyone to create a market to incentivize any action(s), on or off chain. We call these markets Incentivized Action Markets (IAMs).
