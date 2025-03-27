@@ -42,6 +42,11 @@ abstract contract PointsRegistry {
     /// @param spendCaps The new spending caps corresponding to each IP.
     event SpendCapsUpdated(address indexed pointsId, address[] ips, uint256[] spendCaps);
 
+    /// @notice Emitted when the ownership of a points program is transferred.
+    /// @param pointsId The unique identifier of the points program.
+    /// @param newOwner The new owner of the points program.
+    event PointsProgramOwnershipTransferred(address indexed pointsId, address indexed newOwner);
+
     /// @notice Emitted when points are spent.
     /// @param pointsId The unique identifier of the points program.
     /// @param ip The IP address that spent points.
@@ -106,7 +111,7 @@ abstract contract PointsRegistry {
     /// @notice Updates the spending caps for an existing points program.
     /// @dev Only the owner of the points program can update spend caps. Ensures that the lengths of IP and cap arrays match.
     /// @param _pointsId The unique identifier of the points program to update.
-    /// @param _ips An array of IP addresses to update.
+    /// @param _ips An array of IP addresses to update spend caps for.
     /// @param _spendCaps An array of new spending caps corresponding to each IP.
     function updateSpendCaps(address _pointsId, address[] calldata _ips, uint256[] calldata _spendCaps) external {
         // Only the program owner can update spend caps
@@ -124,6 +129,22 @@ abstract contract PointsRegistry {
 
         // Emit update event
         emit SpendCapsUpdated(_pointsId, _ips, _spendCaps);
+    }
+
+    /// @notice Transfers ownership of a points program.
+    /// @dev Only the owner of the points program can transfer ownership.
+    /// @param _pointsId The unique identifier of the points program to transfer ownership for.
+    /// @param _newOwner The new owner of the points program.
+    function transferPointsProgramOwnership(address _pointsId, address _newOwner) external {
+        // Only the program owner can transfer ownership
+        PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
+        require(pointsProgram.owner == msg.sender, OnlyPointsProgramOwner());
+
+        // Updat the points program owner
+        pointsProgram.owner = _newOwner;
+
+        // Emit update event
+        emit PointsProgramOwnershipTransferred(_pointsId, _newOwner);
     }
 
     /// @notice Returns whether the points program exists or not.
