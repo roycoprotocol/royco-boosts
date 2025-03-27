@@ -5,7 +5,7 @@ import "../../lib/forge-std/src/Test.sol";
 import "../../lib/forge-std/src/Vm.sol";
 
 import { IncentiveLocker, PointsRegistry, ERC20, SafeTransferLib } from "../../src/core/IncentiveLocker.sol";
-import { UmaMerkleStreamAV } from "../../src/core/action-verifiers/uma/UmaMerkleStreamAV.sol";
+import { UmaMerkleChefAV } from "../../src/core/action-verifiers/uma/UmaMerkleChefAV.sol";
 
 contract RoycoTestBase is Test {
     using SafeTransferLib for ERC20;
@@ -61,7 +61,7 @@ contract RoycoTestBase is Test {
     // -----------------------------------------
 
     IncentiveLocker public incentiveLocker;
-    UmaMerkleStreamAV public umaMerkleStreamAV;
+    UmaMerkleChefAV public umaMerkleChefAV;
 
     uint256 fork;
 
@@ -102,8 +102,8 @@ contract RoycoTestBase is Test {
         vm.selectFork(fork);
         // Deploy the Royco V2 contracts
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
-        umaMerkleStreamAV =
-            new UmaMerkleStreamAV(OWNER_ADDRESS, UMA_OOV3_ETH_MAINNET, address(incentiveLocker), new address[](0), USDC_ADDRESS_ETH_MAINNET, SECONDS_IN_A_DAY);
+        umaMerkleChefAV =
+            new UmaMerkleChefAV(OWNER_ADDRESS, UMA_OOV3_ETH_MAINNET, address(incentiveLocker), new address[](0), USDC_ADDRESS_ETH_MAINNET, SECONDS_IN_A_DAY);
     }
 
     function _generateRandomIncentives(

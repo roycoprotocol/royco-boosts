@@ -6,21 +6,31 @@ pragma solidity ^0.8.0;
 interface IActionVerifier {
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
+    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
     /// @param _ip The address placing the incentives for this campaign.
     /// @return valid Returns true if the incentive campaign creation is valid.
-    function processIncentiveCampaignCreation(bytes32 _incentiveCampaignId, bytes memory _actionParams, address _ip) external returns (bool valid);
+    function processIncentiveCampaignCreation(
+        bytes32 _incentiveCampaignId,
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmountsOffered,
+        bytes memory _actionParams,
+        address _ip
+    )
+        external
+        returns (bool valid);
 
     /// @notice Processes the addition of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param _incentivesOffered The list of incentive token addresses offered in the campaign.
-    /// @param _incentiveAmountsOffered The corresponding amounts offered for each incentive token.
+    /// @param _incentivesAdded The list of incentive token addresses added to the campaign.
+    /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
     /// @param _ip The address placing the incentives for this campaign.
     /// @return valid Returns true if the incentives were successfully added.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
-        address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmountsOffered,
+        address[] memory _incentivesAdded,
+        uint256[] memory _incentiveAmountsAdded,
         address _ip
     )
         external

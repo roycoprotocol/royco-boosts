@@ -44,7 +44,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
         emit IncentiveLocker.IncentiveCampaignCreated(
             bytes32(0),
             _ip,
-            address(umaMerkleStreamAV),
+            address(umaMerkleChefAV),
             _actionParams,
             _startTimestamp,
             _endTimestamp,
@@ -54,7 +54,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
         );
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleStreamAV), _actionParams, _startTimestamp, _endTimestamp, incentivesOffered, incentiveAmountsOffered
+            address(umaMerkleChefAV), _actionParams, _startTimestamp, _endTimestamp, incentivesOffered, incentiveAmountsOffered
         );
 
         (
@@ -77,20 +77,20 @@ contract Test_IncentiveLocker is RoycoTestBase {
         assertEq(endTimestamp, _endTimestamp);
         assertEq(protocolFee, DEFAULT_PROTOCOL_FEE);
         assertEq(protocolFeeClaimant, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS);
-        assertEq(actionVerifier, address(umaMerkleStreamAV));
+        assertEq(actionVerifier, address(umaMerkleChefAV));
         assertEq(actionParams, _actionParams);
         assertEq(storedIncentivesOffered, incentivesOffered);
         assertEq(storedIncentiveAmountsOffered, incentiveAmountsOffered);
         assertEq(incentiveAmountsRemaining, incentiveAmountsOffered);
     }
 
-    function test_AddIncentives_UmaMerkleStreamAV(uint8 _numAdded) public {
+    function test_AddIncentives_umaMerkleChefAV(uint8 _numAdded) public {
         _numAdded = uint8(bound(_numAdded, 1, 10));
 
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleStreamAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), initialIncentives, initialAmounts
+            address(umaMerkleChefAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), initialIncentives, initialAmounts
         );
 
         (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
@@ -123,7 +123,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
         }
     }
 
-    function test_RemoveIncentives_UmaMerkleStreamAV(uint8 _numRemoved, address _recipient, uint32 _endTimestamp, uint256 _removalTimestamp) public {
+    function test_RemoveIncentives_umaMerkleChefAV(uint8 _numRemoved, address _recipient, uint32 _endTimestamp, uint256 _removalTimestamp) public {
         vm.assume(_recipient != address(0));
         _numRemoved = uint8(bound(_numRemoved, 1, 10));
         uint32 startTimestamp = uint32(block.timestamp);
@@ -132,8 +132,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
 
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
-        bytes32 incentiveCampaignId =
-            incentiveLocker.createIncentiveCampaign(address(umaMerkleStreamAV), new bytes(0), startTimestamp, _endTimestamp, initialIncentives, initialAmounts);
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), new bytes(0), initialIncentives, initialAmounts);
 
         vm.warp(_removalTimestamp);
 
@@ -158,7 +157,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
 
         incentiveLocker.removeIncentives(incentiveCampaignId, removedIncentives, removalAmounts, _recipient);
 
-        (bool exists,,,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
+        (bool exists,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
             incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
 
         assertTrue(exists);

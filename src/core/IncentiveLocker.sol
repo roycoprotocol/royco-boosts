@@ -17,8 +17,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Incentive Campaign State - The state of an incentive campaign on Royco
     /// @custom:field ip The incentive provider who created the campaign.
-    /// @custom:field startTimestamp The start timestamp of the campaign.
-    /// @custom:field endTimestamp The endTimestamp of the campaign.
     /// @custom:field protocolFeeClaimant The protocol fee claimant entitled to protocol fees for this campaign.
     /// @custom:field protocolFee The protocol fee for this campaign.
     /// @custom:field actionVerifier The address of the ActionVerifier implementing the hooks to facilitate campaign creation, modifications, and payouts.
@@ -29,8 +27,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @custom:mapping coIpToWhitelisted IPs that are whitelisted to add incentives to this incentive campaign. They cannot remove incentives.
     struct ICS {
         address ip;
-        uint32 startTimestamp;
-        uint32 endTimestamp;
         address protocolFeeClaimant;
         uint64 protocolFee;
         address actionVerifier;
@@ -61,8 +57,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param ip The address of the incentive provider.
     /// @param actionVerifier The address verifying the incentive conditions.
     /// @param actionParams Arbitrary action parameters.
-    /// @param startTimestamp The timestamp when the incentive campaign starts.
-    /// @param endTimestamp The timestamp when the incentive campaign ends.
     /// @param defaultProtocolFee The protocol fee rate.
     /// @param incentivesOffered Array of incentive token addresses.
     /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
@@ -71,8 +65,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         address indexed ip,
         address indexed actionVerifier,
         bytes actionParams,
-        uint32 startTimestamp,
-        uint32 endTimestamp,
         uint64 defaultProtocolFee,
         address[] incentivesOffered,
         uint256[] incentiveAmountsOffered
@@ -148,9 +140,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when a claim is invalid.
     error InvalidClaim();
 
-    /// @notice Thrown when the campaign interval is invalid.
-    error InvalidCampaignInterval();
-
     /// @notice Thrown when there is an invalid addition of incentives.
     error InvalidAdditionOfIncentives();
 
@@ -173,16 +162,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
-    /// @param _startTimestamp The timestamp to start distributing incentives.
-    /// @param _endTimestamp The timestamp to stop distributing incentives.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @return incentiveCampaignId The unique identifier for the created incentive campaign.
     function createIncentiveCampaign(
         address _actionVerifier,
         bytes memory _actionParams,
-        uint32 _startTimestamp,
-        uint32 _endTimestamp,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered
     )
@@ -190,38 +175,27 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         nonReentrant
         returns (bytes32 incentiveCampaignId)
     {
-        // Check that the duration is valid
-        require(_startTimestamp <= _endTimestamp, InvalidCampaignInterval());
-
         // Compute a unique identifier for this incentive campaign
-        incentiveCampaignId = keccak256(abi.encode(++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams, _startTimestamp, _endTimestamp));
+        incentiveCampaignId = keccak256(abi.encode(++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams));
 
         // Store the incentive campaign information in persistent storage
         ICS storage ics = incentiveCampaignIdToICS[incentiveCampaignId];
         // Pull the incentives from the IP and update accounting
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
         ics.ip = msg.sender;
-        ics.startTimestamp = _startTimestamp;
         ics.protocolFee = defaultProtocolFee;
         ics.actionVerifier = _actionVerifier;
-        ics.endTimestamp = _endTimestamp;
         ics.actionParams = _actionParams;
 
         // Call hook on the Action Verifier to process the creation of this incentive campaign
-        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(incentiveCampaignId, _actionParams, msg.sender);
+        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
+            incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _actionParams, msg.sender
+        );
         require(valid, InvalidIncentiveCampaign());
 
         // Emit event for the addition of the incentive campaign
         emit IncentiveCampaignCreated(
-            incentiveCampaignId,
-            msg.sender,
-            _actionVerifier,
-            _actionParams,
-            _startTimestamp,
-            _endTimestamp,
-            ics.protocolFee,
-            _incentivesOffered,
-            _incentiveAmountsOffered
+            incentiveCampaignId, msg.sender, _actionVerifier, _actionParams, ics.protocolFee, _incentivesOffered, _incentiveAmountsOffered
         );
     }
 
@@ -391,8 +365,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
     /// @return ip The address of the incentive provider.
-    /// @return startTimestamp Timestamp from which incentives start.
-    /// @return endTimestamp Timestamp when incentives stop.
     /// @return protocolFee The protocol fee rate for this action.
     /// @return protocolFeeClaimant The protocol fee recipient.
     /// @return actionVerifier The address of the action verifier.
@@ -406,8 +378,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         returns (
             bool exists,
             address ip,
-            uint32 startTimestamp,
-            uint32 endTimestamp,
             uint64 protocolFee,
             address protocolFeeClaimant,
             address actionVerifier,
@@ -422,8 +392,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            startTimestamp = ics.startTimestamp;
-            endTimestamp = ics.endTimestamp;
             protocolFee = ics.protocolFee;
             protocolFeeClaimant = ics.protocolFeeClaimant == address(0) ? defaultProtocolFeeClaimant : ics.protocolFeeClaimant;
             actionVerifier = ics.actionVerifier;
@@ -435,27 +403,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
                 incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
                 incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
-        }
-    }
-
-    /// @notice Returns the IP and duration for the specified incentive campaign.
-    /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @return exists Boolean indicating whether or not the incentive campaign exists.
-    /// @return ip The address of the incentive provider.
-    /// @return startTimestamp Timestamp from which incentives start.
-    /// @return endTimestamp Timestamp when incentives stop.
-    function getIncentiveCampaignDuration(bytes32 _incentiveCampaignId)
-        external
-        view
-        returns (bool exists, address ip, uint32 startTimestamp, uint32 endTimestamp)
-    {
-        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
-
-        ip = ics.ip;
-        exists = ip != address(0);
-        if (exists) {
-            startTimestamp = ics.startTimestamp;
-            endTimestamp = ics.endTimestamp;
         }
     }
 
@@ -484,8 +431,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
     /// @return ip The address of the incentive provider.
-    /// @return startTimestamp Timestamp from which incentives start.
-    /// @return endTimestamp Timestamp when incentives stop.
     /// @return incentivesOffered Array of offered incentive token addresses.
     /// @return incentiveAmountsOffered Array of total amounts offered per token.
     /// @return incentiveAmountsRemaining Array of amounts remaining per token.
@@ -495,8 +440,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         returns (
             bool exists,
             address ip,
-            uint32 startTimestamp,
-            uint32 endTimestamp,
             address[] memory incentivesOffered,
             uint256[] memory incentiveAmountsOffered,
             uint256[] memory incentiveAmountsRemaining
@@ -507,8 +450,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            startTimestamp = ics.startTimestamp;
-            endTimestamp = ics.endTimestamp;
             incentivesOffered = ics.incentivesOffered;
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
             incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
@@ -577,8 +518,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Returns the duration for the specified incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
-    function incentiveCampaignExists(bytes32 _incentiveCampaignId) external view returns (bool exists) {
-        exists = incentiveCampaignIdToICS[_incentiveCampaignId].ip != address(0);
+    /// @return ip The address of the incentive provider.
+    function incentiveCampaignExists(bytes32 _incentiveCampaignId) external view returns (bool exists, address ip) {
+        ip = incentiveCampaignIdToICS[_incentiveCampaignId].ip;
+        exists = ip != address(0);
     }
 
     /// @notice Gets if a CoIP is whitelisted to add incentives to the specified campaign

@@ -11,7 +11,7 @@ contract Test_AddAndRemoveCoIPs is RoycoTestBase {
     function test_AddCoIPs(address[] memory _coIPs) public {
         uint256 len = bound(_coIPs.length, 1, 100);
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleStreamAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), new address[](0), new uint256[](0)
+            address(umaMerkleChefAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), new address[](0), new uint256[](0)
         );
 
         vm.expectEmit(true, true, true, true);
@@ -30,7 +30,7 @@ contract Test_AddAndRemoveCoIPs is RoycoTestBase {
         _numRemoved = bound(_numRemoved, 1, len);
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleStreamAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), new address[](0), new uint256[](0)
+            address(umaMerkleChefAV), new bytes(0), uint32(block.timestamp), uint32(block.timestamp + 90 days), new address[](0), new uint256[](0)
         );
 
         incentiveLocker.addCoIPs(incentiveCampaignId, _coIPs);
