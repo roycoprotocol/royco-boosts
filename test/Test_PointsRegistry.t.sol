@@ -110,4 +110,19 @@ contract Test_PointsRegistry is RoycoTestBase {
             assertEq(incentiveLocker.getIpSpendCap(pointsId, modifiedIps[i]), newSpendCaps[i]);
         }
     }
+
+    function test_TransferPointsProgramOwnership(address _ip, address _newOwner) public prankModifier(_ip) {
+        address[] memory whitelistedIps = new address[](0);
+        uint256[] memory spendCaps = new uint256[](0);
+
+        address pointsId = incentiveLocker.createPointsProgram("Points", "PTS", 18, whitelistedIps, spendCaps);
+
+        vm.expectEmit(true, true, true, true);
+        emit PointsRegistry.PointsProgramOwnershipTransferred(pointsId, _newOwner);
+
+        incentiveLocker.transferPointsProgramOwnership(pointsId, _newOwner);
+
+        (address newOwner,,,) = incentiveLocker.getPointsProgramMetadata(pointsId);
+        assertEq(newOwner, _newOwner);
+    }
 }

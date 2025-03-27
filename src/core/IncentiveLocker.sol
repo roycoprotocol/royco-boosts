@@ -24,7 +24,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @custom:field actionVerifier The address of the ActionVerifier implementing the hooks to facilitate campaign creation, modifications, and payouts.
     /// @custom:field actionParams Arbitrary bytes used to specify the incentivized action. Must be parsable by the ActionVerifier.
     /// @custom:field incentivesOffered An array of points and/or token incentives offered by this campaign.
-    /// @custom:mapping incentiveToTotalAmountOffered Total amounts allocated to APs + fees (per incentive). Monotonically increasing.
+    /// @custom:mapping incentiveToTotalAmountOffered Total amounts allocated to APs + fees (per incentive).
     /// @custom:mapping incentiveToAmountRemaining Total amounts unspent to APs + fees (per incentive). Must always be <= the value in the total amount mapping.
     /// @custom:mapping coIpToWhitelisted IPs that are whitelisted to add incentives to this incentive campaign. They cannot remove incentives.
     struct ICS {
@@ -683,7 +683,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     {
         // Cache for gas op
         uint256 numIncentives = _incentives.length;
-        address ip = _ics.ip;
         // Check each incentive has a corresponding amount owed
         require(numIncentives == _incentiveAmountsOwed.length, ArrayLengthMismatch());
         // Initialize array for event emission
