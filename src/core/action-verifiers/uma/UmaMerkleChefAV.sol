@@ -7,7 +7,10 @@ import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/ut
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title UmaMerkleChefAV
-/// @notice This contract extends UmaMerkleOracleBase to verify and store Merkle roots.
+/// @notice The Merkle Chef enables streaming incentives for campaigns created in the IL.
+///         Emission rates can be modified during the campaign and are emitted by the Chef.
+///         An offchain oracle periodically posts merkle roots with leaves containing monotonically increasing incentive amounts owed to APs.
+///         This contract extends UmaMerkleOracleBase to assert, resolve, and dispute Merkle roots.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
 contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     using FixedPointMathLib for uint256;
