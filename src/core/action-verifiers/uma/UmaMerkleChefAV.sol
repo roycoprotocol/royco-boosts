@@ -45,7 +45,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         uint256 streamed;
     }
 
-    /// @notice Maps an incentiveCampaignId to its incentives and their corresponding amount already streamed.
+    /// @notice Maps an incentiveCampaignId to its incentives and their current emissions rate.
     mapping(bytes32 id => mapping(address incentive => StreamState info)) public incentiveCampaignIdToIncentiveToStreamState;
 
     /// @notice Maps an incentiveCampaignId to its most recently updated merkle root. A zero value indicates no root has been set.
@@ -53,7 +53,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed.
     /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
-    mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToClaimState;
+    mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToAmountClaimed;
 
     event IncentiveRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
@@ -203,13 +203,13 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
             address incentive = params.incentives[i];
             // Calculate the unclaimed incentive amount: total owed - already claimed
-            uint256 unclaimedIncentiveAmount = params.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
+            uint256 unclaimedIncentiveAmount = params.incentiveAmountsOwed[i] - incentiveCampaignIdToApToAmountClaimed[_incentiveCampaignId][_ap][incentive];
             if (unclaimedIncentiveAmount > 0) {
                 // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
                 incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
                 // Mark everything as claimed
-                incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive] = params.incentiveAmountsOwed[i];
+                incentiveCampaignIdToApToAmountClaimed[_incentiveCampaignId][_ap][incentive] = params.incentiveAmountsOwed[i];
             }
         }
 
