@@ -55,6 +55,12 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     event IncentiveRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
     error OnlyIncentiveLocker();
+    error InvalidCampaignDuration();
+    error ArrayLengthMismatch();
+    error NothingToClaim();
+    error InvalidMerkleProof();
+    error CampaignEnded();
+    error RemovalLimitExceeded();
 
     /// @notice Constructs the UmaMerkleChefAV.
     /// @param _owner The initial owner of the contract.
@@ -86,8 +92,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return success Returns true if the incentive campaign creation is valid.
-    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     function processIncentiveCampaignCreation(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
@@ -98,14 +102,15 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool success, string memory errorMsg)
     {
         ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
+        uint32 startTimestamp = params.startTimestamp;
+        uint32 endTimestamp = params.endTimestamp;
+        require(endTimestamp > startTimestamp, InvalidCampaignDuration());
+
         // Apply the modification to streams and return the result
-        return _modifyIncentiveStreams(
-            Modification.CREATE_CAMPAIGN, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
-        );
+        _modifyIncentiveStreams(Modification.CREATE_CAMPAIGN, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -113,8 +118,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentivesAdded The list of incentive token addresses added to the campaign.
     /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return success Returns true if the incentives can be added.
-    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesAdded,
@@ -124,14 +127,13 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool success, string memory errorMsg)
     {
         // Get and decode the action params
         (,,, bytes memory actionParams) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
         ActionParams memory params = abi.decode(actionParams, (ActionParams));
 
         // Apply the modification to streams and return the result
-        return _modifyIncentiveStreams(
+        _modifyIncentiveStreams(
             Modification.ADD_INCENTIVES, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesAdded, _incentiveAmountsAdded
         );
     }
@@ -141,8 +143,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentivesRemoved The list of incentive token addresses removed from the campaign.
     /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return success Returns true if the incentives can be removed.
-    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
+
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesRemoved,
@@ -152,14 +153,13 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool success, string memory errorMsg)
     {
         // Get and decode the action params
         (,,, bytes memory actionParams) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
         ActionParams memory params = abi.decode(actionParams, (ActionParams));
 
         // Apply the modification to streams and return the result
-        return _modifyIncentiveStreams(
+        _modifyIncentiveStreams(
             Modification.REMOVE_INCENTIVES, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved
         );
     }
@@ -168,8 +168,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _ap The address of the action provider (AP) making the claim.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign used for the claim.
     /// @param _claimParams Encoded parameters required for processing the claim.
-    /// @return success Returns true if the claim is valid.
-    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     /// @return incentives The incentive token addresses to be paid out to the AP.
     /// @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
     function processClaim(
@@ -180,25 +178,20 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool success, string memory errorMsg, address[] memory incentives, uint256[] memory incentiveAmountsOwed)
+        returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
         ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
         // Verify each incentive to claim has a corresponding amount owed
         uint256 numIncentivesToClaim = params.incentives.length;
-        if (numIncentivesToClaim != params.incentiveAmountsOwed.length) {
-            return (false, "ARRAY LENGTH MISMATCH", new address[](0), new uint256[](0));
-        }
+        require(numIncentivesToClaim == params.incentiveAmountsOwed.length, ArrayLengthMismatch());
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
-        if (merkleRoot == bytes32(0)) return (false, "NO MERKLE ROOT POSTED", new address[](0), new uint256[](0));
-
         // Compute the leaf from the user's address and ratio, then check if already claimed.
         bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.incentiveAmountsOwed));
-
         // Verify the proof against the stored Merkle root.
-        if (!MerkleProof.verify(params.merkleProof, merkleRoot, leaf)) return (false, "INVALID MERKLE PROOF", new address[](0), new uint256[](0));
+        require(MerkleProof.verify(params.merkleProof, merkleRoot, leaf), InvalidMerkleProof());
 
         // Mark the claim as processed and return what the user is still owed
         uint256 numNonZeroIncentives = 0;
@@ -218,9 +211,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         }
 
         // If nothing owed, claim is invalid
-        if (numNonZeroIncentives == 0) {
-            return (false, "NOTHING TO CLAIM", new address[](0), new uint256[](0));
-        }
+        require(numNonZeroIncentives != 0, NothingToClaim());
 
         // Resize arrays to the actual number of incentives owed
         assembly ("memory-safe") {
@@ -229,7 +220,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         }
 
         // Return the incentives and amounts owed to the incentive locker
-        return (true, "", incentives, incentiveAmountsOwed);
+        return (incentives, incentiveAmountsOwed);
     }
 
     function _modifyIncentiveStreams(
@@ -241,13 +232,10 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         uint256[] memory _incentiveAmounts
     )
         internal
-        returns (bool valid, string memory errorMsg)
     {
         // Can't add/remove incentives from streams after the campaign ended
         // Can create retroactive campaigns
-        if (_modification != Modification.CREATE_CAMPAIGN && block.timestamp >= _endTimestamp) {
-            return (false, "CAMPAIGN ENDED");
-        }
+        require(_modification == Modification.CREATE_CAMPAIGN || block.timestamp < _endTimestamp, CampaignEnded());
 
         // Check if the campaign is in progress
         bool campaignInProgress = block.timestamp > _startTimestamp;
@@ -264,7 +252,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
             // If creating a new campaign
             if (_modification == Modification.CREATE_CAMPAIGN) {
                 // Initialize the rate on creation
-                updatedRates[i] = (_incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
+                updatedRates[i] = (_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp);
                 // If adding or removing incentives from an already created campaign
             } else {
                 // Calculate the unstreamed incentives for this campaign
@@ -277,9 +265,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
                     updatedRates[i] = (unstreamedIncentives + _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
                 } else if (_modification == Modification.REMOVE_INCENTIVES) {
                     // Check that you are only removing from unstreamed incentives
-                    if (_incentiveAmounts[i] > unstreamedIncentives) {
-                        return (false, "CANNOT REMOVE MORE INCENTIVES THAN ADDED");
-                    }
+                    require(_incentiveAmounts[i] <= unstreamedIncentives, RemovalLimitExceeded());
                     // Substract what you are removing from unstreamed incentives and recalculate the rate for the remaining campaign
                     updatedRates[i] = (unstreamedIncentives - _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
                 }
@@ -299,8 +285,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
         // Emit current rates for the oracle
         emit IncentiveRatesUpdated(_incentiveCampaignId, _incentives, updatedRates);
-
-        return (true, "");
     }
 
     /// @notice Internal hook that handles the resolution logic for a truthful assertion.

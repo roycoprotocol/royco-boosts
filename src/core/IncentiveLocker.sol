@@ -22,8 +22,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @custom:field actionVerifier The address of the ActionVerifier implementing the hooks to facilitate campaign creation, modifications, and payouts.
     /// @custom:field actionParams Arbitrary bytes used to specify the incentivized action. Must be parsable by the ActionVerifier.
     /// @custom:field incentivesOffered An array of points and/or token incentives offered by this campaign.
-    /// @custom:mapping incentiveToTotalAmountOffered Total amounts allocated to APs + fees (per incentive).
-    /// @custom:mapping incentiveToAmountRemaining Total amounts unspent to APs + fees (per incentive). Must always be <= the value in the total amount mapping.
+    /// @custom:mapping incentiveToAmountOffered Amounts allocated to APs + fees (per incentive).
+    /// @custom:mapping incentiveToAmountRemaining Amounts unspent to APs + fees (per incentive). Must always be <= the value in the total amount mapping.
     /// @custom:mapping coIpToWhitelisted IPs that are whitelisted to add incentives to this incentive campaign. They cannot remove incentives.
     struct ICS {
         address ip;
@@ -32,7 +32,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         address actionVerifier;
         bytes actionParams;
         address[] incentivesOffered;
-        mapping(address incentive => uint256 amount) incentiveToTotalAmountOffered;
+        mapping(address incentive => uint256 amount) incentiveToAmountOffered;
         mapping(address incentive => uint256 amount) incentiveToAmountRemaining;
         mapping(address coIP => bool whitelisted) coIpToWhitelisted;
     }
@@ -131,17 +131,8 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when the specified incentive token does not exist.
     error TokenDoesNotExist();
 
-    /// @notice Thrown when an incentive campaign is invalid.
-    error InvalidIncentiveCampaign(string errorMsg);
-
     /// @notice Thrown when an attempt is made to offer zero incentives.
     error CannotOfferZeroIncentives();
-
-    /// @notice Thrown when there is an invalid addition of incentives.
-    error InvalidAdditionOfIncentives(string errorMsg);
-
-    /// @notice Thrown when there is an invalid removal of incentives.
-    error InvalidRemovalOfIncentives(string errorMsg);
 
     /// @notice Thrown when a claim is invalid.
     error InvalidClaim(string errorMsg);
@@ -188,10 +179,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ics.actionParams = _actionParams;
 
         // Call hook on the Action Verifier to process the creation of this incentive campaign
-        (bool success, string memory errorMsg) = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
+        IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
             incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _actionParams, msg.sender
         );
-        require(success, InvalidIncentiveCampaign(errorMsg));
 
         // Emit event for the addition of the incentive campaign
         emit IncentiveCampaignCreated(
@@ -251,9 +241,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
 
         // Call hook on the Action Verifier to process the addition of incentives
-        (bool success, string memory errorMsg) =
-            IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
-        require(success, InvalidAdditionOfIncentives(errorMsg));
+        IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
 
         emit IncentivesAdded(_incentiveCampaignId, msg.sender, _incentivesOffered, _incentiveAmountsOffered);
     }
@@ -292,11 +280,15 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
                 _incentiveAmountsToRemove[i] = incentiveAmountRemoved;
                 // Account for a max refund
                 delete ics.incentiveToAmountRemaining[incentive];
-                // Update the ICS array to reflect the removal
-                // _removeIncentiveFromCampaign(ics, incentive);
             } else {
                 // Account for the refund
                 ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
+            }
+
+            ics.incentiveToAmountOffered[incentive] -= incentiveAmountRemoved;
+            if (ics.incentiveToAmountOffered[incentive] == 0) {
+                // Update the ICS array to reflect the removal
+                _removeIncentiveFromCampaign(ics, incentive);
             }
 
             // If the incentive is a token, refund incentives to the IP
@@ -306,9 +298,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         }
 
         // Call hook on the Action Verifier to process the removal of incentives
-        (bool success, string memory errorMsg) =
-            IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
-        require(success, InvalidRemovalOfIncentives(errorMsg));
+        IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
 
         // Emit removal event
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
@@ -335,10 +325,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         // Retrieve the incentive campaign information.
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
-        // Verify the claim via the action verifier.
-        (bool success, string memory errorMsg, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
+        // Process the claim via the action verifier.
+        (address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
             IActionVerifier(ics.actionVerifier).processClaim(_ap, _incentiveCampaignId, _claimParams);
-        require(success, InvalidClaim(errorMsg));
 
         // Get the protocol fee claimant for this ICS
         address protocolFeeClaimant = ics.protocolFeeClaimant;
@@ -401,7 +390,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
             incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
             for (uint256 i = 0; i < incentivesOffered.length; i++) {
-                incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToAmountOffered[incentivesOffered[i]];
                 incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
         }
@@ -455,7 +444,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             incentiveAmountsOffered = new uint256[](incentivesOffered.length);
             incentiveAmountsRemaining = new uint256[](incentivesOffered.length);
             for (uint256 i = 0; i < incentivesOffered.length; i++) {
-                incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[incentivesOffered[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToAmountOffered[incentivesOffered[i]];
                 incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[incentivesOffered[i]];
             }
         }
@@ -485,7 +474,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             incentiveAmountsOffered = new uint256[](_incentives.length);
             incentiveAmountsRemaining = new uint256[](_incentives.length);
             for (uint256 i = 0; i < _incentives.length; i++) {
-                incentiveAmountsOffered[i] = ics.incentiveToTotalAmountOffered[_incentives[i]];
+                incentiveAmountsOffered[i] = ics.incentiveToAmountOffered[_incentives[i]];
                 incentiveAmountsRemaining[i] = ics.incentiveToAmountRemaining[_incentives[i]];
             }
         }
@@ -511,7 +500,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ip = ics.ip;
         exists = ip != address(0);
         if (exists) {
-            incentiveAmountOffered = ics.incentiveToTotalAmountOffered[_incentive];
+            incentiveAmountOffered = ics.incentiveToAmountOffered[_incentive];
             incentiveAmountRemaining = ics.incentiveToAmountRemaining[_incentive];
         }
     }
@@ -594,13 +583,13 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             }
 
             // Check if the incentive exists in the incentivesOffered array
-            if (_ics.incentiveToTotalAmountOffered[incentive] == 0) {
+            if (_ics.incentiveToAmountOffered[incentive] == 0) {
                 // If it doesn't exist, add it
                 _ics.incentivesOffered.push(incentive);
             }
 
             // Update ICS accounting for this incentive
-            _ics.incentiveToTotalAmountOffered[incentive] += incentiveAmount;
+            _ics.incentiveToAmountOffered[incentive] += incentiveAmount;
             _ics.incentiveToAmountRemaining[incentive] += incentiveAmount;
         }
     }
@@ -681,25 +670,25 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         }
     }
 
-    // /// @notice Remove an incentive from a campaign in O(n) time.
-    // /// @param _ics Storage reference to the incentive campaign information.
-    // /// @param _incentive The incentive to remove from the campaign
-    // function _removeIncentiveFromCampaign(ICS storage _ics, address _incentive) internal {
-    //     uint256 lastIndex = _ics.incentivesOffered.length - 1;
-    //     // Get the index of _incentive in the array
-    //     uint256 index = 0;
-    //     for (index; index < lastIndex; ++index) {
-    //         // Break at the index of the element to remove
-    //         if (_ics.incentivesOffered[index] == _incentive) break;
-    //     }
-    //     // If index is not the last index, swap the last incentive into the index position
-    //     if (index != lastIndex) {
-    //         // Get the incentive at the last index in the incentivesOffered array
-    //         address lastIncentive = _ics.incentivesOffered[lastIndex];
-    //         // Place the last incentive at the index of the removed incentive
-    //         _ics.incentivesOffered[index] = lastIncentive;
-    //     }
-    //     // Pop the last element off
-    //     _ics.incentivesOffered.pop();
-    // }
+    /// @notice Remove an incentive from a campaign in O(n) time.
+    /// @param _ics Storage reference to the incentive campaign information.
+    /// @param _incentive The incentive to remove from the campaign
+    function _removeIncentiveFromCampaign(ICS storage _ics, address _incentive) internal {
+        uint256 lastIndex = _ics.incentivesOffered.length - 1;
+        // Get the index of _incentive in the array
+        uint256 index = 0;
+        for (index; index < lastIndex; ++index) {
+            // Break at the index of the element to remove
+            if (_ics.incentivesOffered[index] == _incentive) break;
+        }
+        // If index is not the last index, swap the last incentive into the index position
+        if (index != lastIndex) {
+            // Get the incentive at the last index in the incentivesOffered array
+            address lastIncentive = _ics.incentivesOffered[lastIndex];
+            // Place the last incentive at the index of the removed incentive
+            _ics.incentivesOffered[index] = lastIncentive;
+        }
+        // Pop the last element off
+        _ics.incentivesOffered.pop();
+    }
 }
