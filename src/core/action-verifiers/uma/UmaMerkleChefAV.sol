@@ -12,6 +12,12 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     using FixedPointMathLib for uint256;
 
+    enum Modification {
+        CREATE_CAMPAIGN,
+        ADD_INCENTIVES,
+        REMOVE_INCENTIVES
+    }
+
     /// @notice Action parameters for this action verifier.
     /// @param ipfsCID The link to the ipfs doc which store an action description and more info
     struct ActionParams {
@@ -46,7 +52,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
     mapping(bytes32 id => mapping(address ap => mapping(address incentive => uint256 amountClaimed))) public incentiveCampaignIdToApToClaimState;
 
-    event RatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint128[] rates);
+    event IncentiveRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
     error OnlyIncentiveLocker();
 
@@ -80,7 +86,8 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return valid Returns true if the incentive campaign creation is valid.
+    /// @return success Returns true if the incentive campaign creation is valid.
+    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     function processIncentiveCampaignCreation(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
@@ -91,27 +98,14 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool valid)
+        returns (bool success, string memory errorMsg)
     {
-        // Todo: Check that the params are valid for this AV
-        ActionParams memory actionParams = abi.decode(_actionParams, (ActionParams));
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
-        uint256 campaignDuration = actionParams.endTimestamp - actionParams.startTimestamp;
-
-        uint256 numIncentivesOffered = _incentivesOffered.length;
-        uint128[] memory currentRates = new uint128[](numIncentivesOffered);
-        for (uint256 i = 0; i < numIncentivesOffered; ++i) {
-            // Calculate the rate for this incentive (scaled up by WAD)
-            currentRates[i] = uint128(_incentiveAmountsOffered[i].divWadDown(campaignDuration));
-            // Set the initial rate
-            // Since the campaign just started, nothing has been streamed so far, so no need to update that
-            incentiveCampaignIdToIncentiveToStreamState[_incentiveCampaignId][_incentivesOffered[i]].currentRate = currentRates[i];
-        }
-
-        // Emit current rates for oracle
-        emit RatesUpdated(_incentiveCampaignId, _incentivesOffered, currentRates);
-
-        return true;
+        // Apply the modification to streams and return the result
+        return _modifyIncentiveStreams(
+            Modification.CREATE_CAMPAIGN, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
+        );
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -119,7 +113,8 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentivesAdded The list of incentive token addresses added to the campaign.
     /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return valid Returns true if the incentives were successfully added.
+    /// @return success Returns true if the incentives can be added.
+    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesAdded,
@@ -129,107 +124,52 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool valid)
+        returns (bool success, string memory errorMsg)
     {
-        (,,, bytes memory params) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
-        ActionParams memory actionParams = abi.decode(params, (ActionParams));
+        // Get and decode the action params
+        (,,, bytes memory actionParams) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
+        ActionParams memory params = abi.decode(actionParams, (ActionParams));
 
-        bool campaignStarted = block.timestamp > actionParams.startTimestamp;
-        // Calculate the remaining campaign duration
-        uint256 remainingCampaignDuration = actionParams.endTimestamp - (campaignStarted ? block.timestamp : actionParams.startTimestamp);
-
-        uint256 numIncentivesAdded = _incentivesAdded.length;
-        uint128[] memory currentRates = new uint128[](numIncentivesAdded);
-        for (uint256 i = 0; i < numIncentivesAdded; ++i) {
-            StreamState storage state = incentiveCampaignIdToIncentiveToStreamState[_incentiveCampaignId][_incentivesAdded[i]];
-            // Calculate the rate for this incentive (scaled up by WAD) for the rest of the campaign
-            // Current rate + rate for the remainder of the campaign after this addition
-            currentRates[i] = state.currentRate + uint128(_incentiveAmountsAdded[i].divWadDown(remainingCampaignDuration));
-            // If campaign, update the stream state with the amount streamed so far and the update timestamp
-            if (campaignStarted) {
-                uint32 lastUpdated = state.lastUpdated;
-                uint256 elapsedDurationSinceLastUpdate = (lastUpdated == 0 ? block.timestamp : lastUpdated) - actionParams.startTimestamp;
-                state.streamed += elapsedDurationSinceLastUpdate * state.currentRate;
-                state.lastUpdated = uint32(block.timestamp);
-            }
-            // Update the rate for this incentive
-            state.currentRate = currentRates[i];
-        }
-
-        // Emit current rates for oracle
-        emit RatesUpdated(_incentiveCampaignId, _incentivesAdded, currentRates);
-
-        return true;
+        // Apply the modification to streams and return the result
+        return _modifyIncentiveStreams(
+            Modification.ADD_INCENTIVES, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesAdded, _incentiveAmountsAdded
+        );
     }
 
     /// @notice Processes the removal of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param _incentivesToRemove The list of incentive token addresses to be removed from the campaign.
-    /// @param _incentiveAmountsToRemove The corresponding amounts to remove for each incentive token.
+    /// @param _incentivesRemoved The list of incentive token addresses removed from the campaign.
+    /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
     /// @param _ip The address placing the incentives for this campaign.
-    /// @return valid Returns true if the incentives were successfully removed.
+    /// @return success Returns true if the incentives can be removed.
+    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
-        address[] memory _incentivesToRemove,
-        uint256[] memory _incentiveAmountsToRemove,
+        address[] memory _incentivesRemoved,
+        uint256[] memory _incentiveAmountsRemoved,
         address _ip
     )
         external
-        view
         override
         onlyIncentiveLocker
-        returns (bool valid)
+        returns (bool success, string memory errorMsg)
     {
-        // (,,, bytes memory params) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
-        // ActionParams memory actionParams = abi.decode(params, (ActionParams));
-        // uint256 remainingCampaignDuration = actionParams.endTimestamp - block.timestamp;
+        // Get and decode the action params
+        (,,, bytes memory actionParams) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
+        ActionParams memory params = abi.decode(actionParams, (ActionParams));
 
-        // uint256 numIncentivesAdded = _incentivesAdded.length;
-        // uint256[] memory currentRates = new uint256[](numIncentivesAdded);
-        // for (uint256 i = 0; i < numIncentivesAdded; ++i) {
-        //     address incentive = _incentivesAdded[i];
-        //     // Calculate the rate for this incentive (scaled up by WAD) for the rest of the campaign
-        //     // Current rate + rate for the remainder of the campaign after this addition
-        //     currentRates[i] =
-        //         incentiveCampaignIdToIncentiveToRate[_incentiveCampaignId][incentive] + _incentiveAmountsAdded[i].divWadDown(remainingCampaignDuration);
-        //     // Update the rate for this incentive
-        //     incentiveCampaignIdToIncentiveToRate[_incentiveCampaignId][incentive] = currentRates[i];
-        // }
-
-        // emit RatesUpdated(_incentiveCampaignId, _incentivesAdded, currentRates);
-
-        // // Get the necessary incentive campaign information after executing the removal
-        // (,, uint32 startTimestamp, uint32 endTimestamp) = incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
-
-        // // Calculate the duration of the campaign
-        // uint256 totalCampaignDuration = endTimestamp - startTimestamp;
-        // uint256 remainingCampaignDuration = endTimestamp - block.timestamp;
-
-        // // Get the relevant incentive campaign state after the removal has been applied to validate the removal
-        // (,, uint256[] memory incentiveAmountsOffered, uint256[] memory incentiveAmountsRemaining) =
-        //     incentiveLocker.getIncentiveAmountsOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove);
-
-        // // Make sure that the incentives remaining are greater than or equal to the total incentives spent so far
-        // // This AV is configured to stream incentives for the entire campaign duration, so you can't remove more than what has already been streamed to APs
-        // uint256 numIncentivesToRemove = _incentivesToRemove.length;
-        // for (uint256 i = 0; i < numIncentivesToRemove; ++i) {
-        //     // The minimum amount remaining = total amount already streamed and unstreamed - unstreamed.
-        //     uint256 unstreamedIncentives = ((incentiveAmountsOffered[i] * remainingCampaignDuration) / totalCampaignDuration);
-        //     uint256 minIncentiveAmountRemaining = incentiveAmountsOffered[i] - unstreamedIncentives;
-        //     // If remaining is less than the min amount remaning, removal isn't valid
-        //     if (incentiveAmountsRemaining[i] < minIncentiveAmountRemaining) {
-        //         return false;
-        //     }
-        // }
-        // If each incentive still has more left than the minimum amount, the removal is valid
-        return true;
+        // Apply the modification to streams and return the result
+        return _modifyIncentiveStreams(
+            Modification.REMOVE_INCENTIVES, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved
+        );
     }
 
     /// @notice Processes a claim by validating the provided parameters.
     /// @param _ap The address of the action provider (AP) making the claim.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign used for the claim.
     /// @param _claimParams Encoded parameters required for processing the claim.
-    /// @return valid Returns true if the claim is valid.
+    /// @return success Returns true if the claim is valid.
+    /// @return errorMsg The error message to be propagated up the stack. Only used when success is false.
     /// @return incentives The incentive token addresses to be paid out to the AP.
     /// @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
     function processClaim(
@@ -240,47 +180,46 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         external
         override
         onlyIncentiveLocker
-        returns (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed)
+        returns (bool success, string memory errorMsg, address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
         // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
-        ClaimParams memory claimParams = abi.decode(_claimParams, (ClaimParams));
+        ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
         // Verify each incentive to claim has a corresponding amount owed
-        uint256 numIncentivesToClaim = claimParams.incentives.length;
-        if (numIncentivesToClaim != claimParams.incentiveAmountsOwed.length) {
-            return (false, new address[](0), new uint256[](0));
+        uint256 numIncentivesToClaim = params.incentives.length;
+        if (numIncentivesToClaim != params.incentiveAmountsOwed.length) {
+            return (false, "ARRAY LENGTH MISMATCH", new address[](0), new uint256[](0));
         }
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
-        if (merkleRoot == bytes32(0)) return (false, new address[](0), new uint256[](0));
+        if (merkleRoot == bytes32(0)) return (false, "NO MERKLE ROOT POSTED", new address[](0), new uint256[](0));
 
         // Compute the leaf from the user's address and ratio, then check if already claimed.
-        bytes32 leaf = keccak256(abi.encode(_ap, claimParams.incentives, claimParams.incentiveAmountsOwed));
+        bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.incentiveAmountsOwed));
 
         // Verify the proof against the stored Merkle root.
-        valid = MerkleProof.verify(claimParams.merkleProof, merkleRoot, leaf);
-        if (!valid) return (false, new address[](0), new uint256[](0));
+        if (!MerkleProof.verify(params.merkleProof, merkleRoot, leaf)) return (false, "INVALID MERKLE PROOF", new address[](0), new uint256[](0));
 
         // Mark the claim as processed and return what the user is still owed
         uint256 numNonZeroIncentives = 0;
         incentives = new address[](numIncentivesToClaim);
         incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
-            address incentive = claimParams.incentives[i];
+            address incentive = params.incentives[i];
             // Calculate the unclaimed incentive amount: total owed - already claimed
-            uint256 unclaimedIncentiveAmount = claimParams.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
+            uint256 unclaimedIncentiveAmount = params.incentiveAmountsOwed[i] - incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive];
             if (unclaimedIncentiveAmount > 0) {
                 // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
                 incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
                 // Mark everything as claimed
-                incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive] = claimParams.incentiveAmountsOwed[i];
+                incentiveCampaignIdToApToClaimState[_incentiveCampaignId][_ap][incentive] = params.incentiveAmountsOwed[i];
             }
         }
 
         // If nothing owed, claim is invalid
         if (numNonZeroIncentives == 0) {
-            return (false, new address[](0), new uint256[](0));
+            return (false, "NOTHING TO CLAIM", new address[](0), new uint256[](0));
         }
 
         // Resize arrays to the actual number of incentives owed
@@ -290,7 +229,78 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         }
 
         // Return the incentives and amounts owed to the incentive locker
-        return (true, incentives, incentiveAmountsOwed);
+        return (true, "", incentives, incentiveAmountsOwed);
+    }
+
+    function _modifyIncentiveStreams(
+        Modification _modification,
+        bytes32 _incentiveCampaignId,
+        uint32 _startTimestamp,
+        uint32 _endTimestamp,
+        address[] memory _incentives,
+        uint256[] memory _incentiveAmounts
+    )
+        internal
+        returns (bool valid, string memory errorMsg)
+    {
+        // Can't add/remove incentives from streams after the campaign ended
+        // Can create retroactive campaigns
+        if (_modification != Modification.CREATE_CAMPAIGN && block.timestamp >= _endTimestamp) {
+            return (false, "CAMPAIGN ENDED");
+        }
+
+        // Check if the campaign is in progress
+        bool campaignInProgress = block.timestamp > _startTimestamp;
+        // Calculate the remaining campaign duration (account for unstarted campaigns)
+        uint256 remainingCampaignDuration = _endTimestamp - (campaignInProgress ? block.timestamp : _startTimestamp);
+
+        // Make modifications to the appropriate incentive streams
+        uint256 numIncentives = _incentives.length;
+        uint256[] memory updatedRates = new uint256[](numIncentives);
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Get the stream state from storage
+            StreamState storage state = incentiveCampaignIdToIncentiveToStreamState[_incentiveCampaignId][_incentives[i]];
+
+            // If creating a new campaign
+            if (_modification == Modification.CREATE_CAMPAIGN) {
+                // Initialize the rate on creation
+                updatedRates[i] = (_incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
+                // If adding or removing incentives from an already created campaign
+            } else {
+                // Calculate the unstreamed incentives for this campaign
+                uint256 currentRate = state.currentRate;
+                uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
+
+                // If adding incentives
+                if (_modification == Modification.ADD_INCENTIVES) {
+                    // Add unstreamed incentives to what you are adding and recalculate the rate for the remaining campaign
+                    updatedRates[i] = (unstreamedIncentives + _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
+                } else if (_modification == Modification.REMOVE_INCENTIVES) {
+                    // Check that you are only removing from unstreamed incentives
+                    if (_incentiveAmounts[i] > unstreamedIncentives) {
+                        return (false, "CANNOT REMOVE MORE INCENTIVES THAN ADDED");
+                    }
+                    // Substract what you are removing from unstreamed incentives and recalculate the rate for the remaining campaign
+                    updatedRates[i] = (unstreamedIncentives - _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
+                }
+
+                // If the campaign is in progress, update the stream state with the amount streamed so far and the update timestamp
+                if (campaignInProgress) {
+                    uint32 lastUpdated = state.lastUpdated;
+                    uint256 elapsedDurationSinceLastUpdate = (lastUpdated == 0 ? block.timestamp : lastUpdated) - _startTimestamp;
+                    state.streamed += (currentRate * elapsedDurationSinceLastUpdate);
+                    state.lastUpdated = uint32(block.timestamp);
+                }
+            }
+
+            // Update the rate for this incentive to the current rate
+            state.currentRate = uint128(updatedRates[i]);
+        }
+
+        // Emit current rates for the oracle
+        emit IncentiveRatesUpdated(_incentiveCampaignId, _incentives, updatedRates);
+
+        return (true, "");
     }
 
     /// @notice Internal hook that handles the resolution logic for a truthful assertion.

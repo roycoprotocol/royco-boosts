@@ -132,19 +132,19 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     error TokenDoesNotExist();
 
     /// @notice Thrown when an incentive campaign is invalid.
-    error InvalidIncentiveCampaign();
+    error InvalidIncentiveCampaign(string errorMsg);
 
     /// @notice Thrown when an attempt is made to offer zero incentives.
     error CannotOfferZeroIncentives();
 
-    /// @notice Thrown when a claim is invalid.
-    error InvalidClaim();
-
     /// @notice Thrown when there is an invalid addition of incentives.
-    error InvalidAdditionOfIncentives();
+    error InvalidAdditionOfIncentives(string errorMsg);
 
     /// @notice Thrown when there is an invalid removal of incentives.
-    error InvalidRemovalOfIncentives();
+    error InvalidRemovalOfIncentives(string errorMsg);
+
+    /// @notice Thrown when a claim is invalid.
+    error InvalidClaim(string errorMsg);
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -188,10 +188,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ics.actionParams = _actionParams;
 
         // Call hook on the Action Verifier to process the creation of this incentive campaign
-        bool valid = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
+        (bool success, string memory errorMsg) = IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
             incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _actionParams, msg.sender
         );
-        require(valid, InvalidIncentiveCampaign());
+        require(success, InvalidIncentiveCampaign(errorMsg));
 
         // Emit event for the addition of the incentive campaign
         emit IncentiveCampaignCreated(
@@ -251,8 +251,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
 
         // Call hook on the Action Verifier to process the addition of incentives
-        bool valid = IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
-        require(valid, InvalidAdditionOfIncentives());
+        (bool success, string memory errorMsg) =
+            IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
+        require(success, InvalidAdditionOfIncentives(errorMsg));
 
         emit IncentivesAdded(_incentiveCampaignId, msg.sender, _incentivesOffered, _incentiveAmountsOffered);
     }
@@ -305,9 +306,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         }
 
         // Call hook on the Action Verifier to process the removal of incentives
-        bool valid =
+        (bool success, string memory errorMsg) =
             IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
-        require(valid, InvalidRemovalOfIncentives());
+        require(success, InvalidRemovalOfIncentives(errorMsg));
 
         // Emit removal event
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
@@ -335,9 +336,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
         // Verify the claim via the action verifier.
-        (bool valid, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
+        (bool success, string memory errorMsg, address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
             IActionVerifier(ics.actionVerifier).processClaim(_ap, _incentiveCampaignId, _claimParams);
-        require(valid, InvalidClaim());
+        require(success, InvalidClaim(errorMsg));
 
         // Get the protocol fee claimant for this ICS
         address protocolFeeClaimant = ics.protocolFeeClaimant;
