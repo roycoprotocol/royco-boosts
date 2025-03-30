@@ -10,7 +10,7 @@ import { SafeTransferLib } from "../../../../../lib/solmate/src/utils/SafeTransf
 import { AncillaryData } from "../../../../libraries/AncillaryData.sol";
 
 /// @title UmaMerkleOracleBase
-/// @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert and verify Merkle roots.
+/// @notice This abstract contract uses UMA's Optimistic Oracle V3 to assert, resolve, and dispute Merkle roots.
 ///         It stores the relevant Merkle root assertion data, handles callback logic upon resolution
 ///         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
 /// @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting

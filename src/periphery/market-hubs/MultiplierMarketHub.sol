@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IncentiveLocker} from "../../core/IncentiveLocker.sol";
+import { IncentiveLocker } from "../../core/IncentiveLocker.sol";
 
 /// @title MultiplierMarketHub
 /// @notice Manages negotiation for multiplier based IAMs with offers from Incentive Providers (IP) and Action Providers (AP).
@@ -29,13 +29,7 @@ contract MultiplierMarketHub {
     /// @param ap The address of the Action Provider creating the offer.
     /// @param multiplier The multiplier counter-offered by the AP.
     /// @param size Optional quantitative parameter offered by the AP.
-    event APOfferCreated(
-        bytes32 indexed incentiveCampaignId,
-        bytes32 indexed apOfferHash,
-        address indexed ap,
-        uint96 multiplier,
-        uint256 size
-    );
+    event APOfferCreated(bytes32 indexed incentiveCampaignId, bytes32 indexed apOfferHash, address indexed ap, uint96 multiplier, uint256 size);
 
     /// @notice Emitted when an AP offer is filled by the correct Incentive Provider.
     /// @param apOfferHash The hash identifier of the filled AP offer.
@@ -43,13 +37,7 @@ contract MultiplierMarketHub {
     /// @param ap The address of the Action Provider whose offer was filled.
     /// @param multiplier The multiplier offered by the AP.
     /// @param size Optional quantitative parameter offered by the AP.
-    event APOfferFilled(
-        bytes32 indexed apOfferHash,
-        bytes32 indexed incentiveCampaignId,
-        address indexed ap,
-        uint96 multiplier,
-        uint256 size
-    );
+    event APOfferFilled(bytes32 indexed apOfferHash, bytes32 indexed incentiveCampaignId, address indexed ap, uint96 multiplier, uint256 size);
 
     error OnlyTheIpCanFill();
     error NonexistantIncentiveCampaign();
@@ -65,12 +53,10 @@ contract MultiplierMarketHub {
     uint256 numApOffers;
 
     modifier incentiveCampaignChecks(bytes32 _incentiveCampaignId, bool _checkCallerIsIP) {
-        (bool exists, address ip,, uint32 endTimestamp) =
-            incentiveLocker.getIncentiveCampaignDuration(_incentiveCampaignId);
+        (bool exists, address ip) = incentiveLocker.incentiveCampaignExists(_incentiveCampaignId);
 
         // Ensure that the incentive campaign exists in the incentive locker and hasn't expired
         require(exists, NonexistantIncentiveCampaign());
-        require(block.timestamp <= endTimestamp, IncentiveCampaignExpired());
 
         // Check that the caller is the IP if specified
         require(!_checkCallerIsIP || msg.sender == ip, OnlyTheIpCanFill());
@@ -98,7 +84,11 @@ contract MultiplierMarketHub {
     /// @param _multiplier Multiplier requested by the AP.
     /// @param _size Optional quantitative parameter offered by the AP.
     /// @return apOfferHash Unique AP offer identifier.
-    function createAPOffer(bytes32 _incentiveCampaignId, uint96 _multiplier, uint256 _size)
+    function createAPOffer(
+        bytes32 _incentiveCampaignId,
+        uint96 _multiplier,
+        uint256 _size
+    )
         external
         incentiveCampaignChecks(_incentiveCampaignId, false)
         returns (bytes32 apOfferHash)
@@ -120,10 +110,7 @@ contract MultiplierMarketHub {
     /// @notice Fills an AP offer.
     /// @dev Must be called by the IP that created the incentive campaign in the incentive locker.
     /// @param _apOfferHash AP offer identifier.
-    function fillAPOffer(bytes32 _apOfferHash)
-        external
-        incentiveCampaignChecks(offerHashToAPOffer[_apOfferHash].incentiveCampaignId, true)
-    {
+    function fillAPOffer(bytes32 _apOfferHash) external incentiveCampaignChecks(offerHashToAPOffer[_apOfferHash].incentiveCampaignId, true) {
         // Get AP offer from storage
         APOffer storage apOffer = offerHashToAPOffer[_apOfferHash];
 

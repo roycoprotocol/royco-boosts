@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-/// @title IActionVerifier
-/// @notice ActionVerifier interface for processing incentive campaign creation, modifications, and payouts.
-interface IActionVerifier {
+import { IActionVerifier } from "../../src/interfaces/IActionVerifier.sol";
+
+/// @title DumbAV
+/// @notice An AV that does nothing.
+contract DumbAV is IActionVerifier {
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
     /// @param _incentivesOffered Array of incentive token addresses.
@@ -17,7 +19,9 @@ interface IActionVerifier {
         bytes memory _actionParams,
         address _ip
     )
-        external;
+        external
+        override
+    { }
 
     /// @notice Processes the addition of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
@@ -30,7 +34,9 @@ interface IActionVerifier {
         uint256[] memory _incentiveAmountsAdded,
         address _ip
     )
-        external;
+        external
+        override
+    { }
 
     /// @notice Processes the removal of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
@@ -43,7 +49,9 @@ interface IActionVerifier {
         uint256[] memory _incentiveAmountsRemoved,
         address _ip
     )
-        external;
+        external
+        override
+    { }
 
     /// @notice Processes a claim by validating the provided parameters.
     /// @param _ap The address of the action provider (AP) making the claim.
@@ -57,5 +65,7 @@ interface IActionVerifier {
         bytes memory _claimParams
     )
         external
-        returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed);
+        override
+        returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
+    { }
 }
