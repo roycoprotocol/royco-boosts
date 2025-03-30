@@ -134,9 +134,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when an attempt is made to offer zero incentives.
     error CannotOfferZeroIncentives();
 
-    /// @notice Thrown when a claim is invalid.
-    error InvalidClaim(string errorMsg);
-
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
     /// @param _defaultProtocolFeeClaimant Default address allowed to claim protocol fees.

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import "./utils/RoycoTestBase.sol";
+import "../utils/RoycoTestBase.sol";
 
 contract Test_PointsRegistry is RoycoTestBase {
     function setUp() external {
-        setupBaseEnvironment();
+        setupIncentiveLocker();
     }
 
     function test_PointsProgramCreation(

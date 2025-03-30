@@ -40,7 +40,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Parameters used for user claims.
     /// @custom:field incentives The total incentive tokens to pay out to the AP so far.
     /// @custom:field incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
-    /// @custom:field merkleProof A merkle proof for leaf = keccak256(abi.encode(ap, incentives, incentiveAmountsOwed))
+    /// @custom:field merkleProof A merkle proof for leaf = keccak256(abi.encode(AP address, incentives, incentiveAmountsOwed))
     struct ClaimParams {
         address[] incentives;
         uint256[] incentiveAmountsOwed;
@@ -278,11 +278,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         // Can create retroactive campaigns
         require(_modification == Modifications.INIT_STREAMS || block.timestamp < _endTimestamp, CampaignEnded());
 
-        // Check if the campaign is in progress
-        bool campaignInProgress = block.timestamp > _startTimestamp;
-        // Calculate the remaining campaign duration (account for unstarted campaigns)
-        uint256 remainingCampaignDuration = _endTimestamp - (campaignInProgress ? block.timestamp : _startTimestamp);
-
         // Make modifications to the appropriate incentive streams
         uint256 numIncentives = _incentives.length;
         uint256[] memory updatedRates = new uint256[](numIncentives);
@@ -296,6 +291,11 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
                 updatedRates[i] = (_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp);
                 // If adding or removing incentives from an already created campaign
             } else {
+                // Check if the campaign is in progress
+                bool campaignInProgress = block.timestamp > _startTimestamp;
+                // Calculate the remaining campaign duration (account for unstarted campaigns)
+                uint256 remainingCampaignDuration = _endTimestamp - (campaignInProgress ? block.timestamp : _startTimestamp);
+
                 // Calculate the unstreamed incentives for this campaign
                 uint256 currentRate = stream.currentRate;
                 uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);

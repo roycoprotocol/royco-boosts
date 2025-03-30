@@ -6,6 +6,7 @@ import "../../lib/forge-std/src/Vm.sol";
 
 import { IncentiveLocker, PointsRegistry, ERC20, SafeTransferLib } from "../../src/core/IncentiveLocker.sol";
 import { UmaMerkleChefAV } from "../../src/core/action-verifiers/uma/UmaMerkleChefAV.sol";
+import { DumbAV } from "./DumbAV.sol";
 
 contract RoycoTestBase is Test {
     using SafeTransferLib for ERC20;
@@ -62,6 +63,7 @@ contract RoycoTestBase is Test {
 
     IncentiveLocker public incentiveLocker;
     UmaMerkleChefAV public umaMerkleChefAV;
+    DumbAV public dumbAV;
 
     uint256 fork;
 
@@ -71,11 +73,23 @@ contract RoycoTestBase is Test {
         vm.stopPrank();
     }
 
-    function setupBaseEnvironment() public virtual {
+    function setupUmaMerkleChefBaseEnvironment() public virtual {
         // Fork Mainnet
         fork = vm.createFork(MAINNET_RPC_URL);
         setupWallets();
-        setUpRoycoContracts();
+        setUpMerkleChefContracts();
+    }
+
+    function setupDumbBaseEnvironment() public virtual {
+        // Fork Mainnet
+        setupWallets();
+        setUpDumbContracts();
+    }
+
+    function setupIncentiveLocker() public virtual {
+        // Fork Mainnet
+        setupWallets();
+        incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
     }
 
     function setupWallets() public {
@@ -98,12 +112,18 @@ contract RoycoTestBase is Test {
         DAN_ADDRESS = DAN.addr;
     }
 
-    function setUpRoycoContracts() public {
+    function setUpMerkleChefContracts() public {
         vm.selectFork(fork);
         // Deploy the Royco V2 contracts
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
         umaMerkleChefAV =
             new UmaMerkleChefAV(OWNER_ADDRESS, UMA_OOV3_ETH_MAINNET, address(incentiveLocker), new address[](0), USDC_ADDRESS_ETH_MAINNET, SECONDS_IN_A_DAY);
+    }
+
+    function setUpDumbContracts() public {
+        // Deploy the Royco V2 contracts
+        incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
+        dumbAV = new DumbAV();
     }
 
     function _generateRandomIncentives(
