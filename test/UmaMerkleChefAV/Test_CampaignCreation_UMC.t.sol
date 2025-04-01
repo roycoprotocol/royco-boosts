@@ -70,14 +70,10 @@ contract Test_CampaignCreation_UMC is RoycoTestBase {
         assertEq(incentiveAmountsRemaining, incentiveAmountsOffered);
 
         for (uint256 i = 0; i < storedIncentivesOffered.length; ++i) {
-            (uint32 lastUpdated, uint128 currentRate, uint256 streamed) =
-                umaMerkleChefAV.incentiveCampaignIdToIncentiveToStreamState(incentiveCampaignId, storedIncentivesOffered[i]);
-
-            uint128 expectedRate = uint128((storedIncentiveAmountsOffered[i] * (10 ** 18)) / (_endTimestamp - _startTimestamp));
-            assertEq(lastUpdated, 0);
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, storedIncentivesOffered[i]);
+            uint256 expectedRate = (storedIncentiveAmountsOffered[i] * (10 ** 18)) / (_endTimestamp - _startTimestamp);
             assertLe(currentRate, expectedRate);
             assertApproxEqRel(currentRate, expectedRate, 0.01e18);
-            assertEq(streamed, 0);
         }
     }
 }

@@ -33,7 +33,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         // Save the current rates for each incentive being added.
         uint256[] memory initialRates = new uint256[](addedIncentives.length);
         for (uint256 i = 0; i < addedIncentives.length; ++i) {
-            (, uint128 currentRate,) = umaMerkleChefAV.incentiveCampaignIdToIncentiveToStreamState(incentiveCampaignId, addedIncentives[i]);
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, addedIncentives[i]);
             initialRates[i] = currentRate;
         }
 
@@ -78,10 +78,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         // Check final streaming rates, streamed amounts, and lastUpdated timestamp for each added incentive.
         uint256 remainingDuration = campaignEnd - additionTimestamp;
         for (uint256 i = 0; i < addedIncentives.length; ++i) {
-            (uint32 lastUpdated, uint128 newRate, uint256 streamed) =
-                umaMerkleChefAV.incentiveCampaignIdToIncentiveToStreamState(incentiveCampaignId, addedIncentives[i]);
-            assertEq(streamed, FixedPointMathLib.mulWadDown(initialRates[i], (additionTimestamp - campaignStart)));
-            assertEq(lastUpdated, additionTimestamp);
+            uint256 newRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, addedIncentives[i]);
         }
     }
 }
