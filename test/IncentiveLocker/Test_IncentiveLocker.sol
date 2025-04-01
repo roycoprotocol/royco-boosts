@@ -64,7 +64,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
         assertEq(incentiveAmountsRemaining, incentiveAmountsOffered);
     }
 
-    function test_RevertIf_ZeroIncentiveAmount(uint8 _numIncentivesOffered) external {
+    function test_RevertIf_ZeroIncentiveAmountOffered(uint8 _numIncentivesOffered) external {
         _numIncentivesOffered = uint8(bound(_numIncentivesOffered, 1, 10));
 
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(address(this), _numIncentivesOffered);
