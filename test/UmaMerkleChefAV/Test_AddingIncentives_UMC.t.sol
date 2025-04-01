@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "../utils/RoycoTestBase.sol";
+import { FixedPointMathLib } from "../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 contract Test_AddingIncentives_UMC is RoycoTestBase {
     function setUp() external {
@@ -12,13 +13,31 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         _numAdded = uint8(bound(_numAdded, 1, 10));
         _campaignLength = uint32(bound(_campaignLength, 1 days, 365 days));
 
+        // Capture the campaign start and end timestamps.
+        uint32 campaignStart = uint32(block.timestamp);
+        uint32 campaignEnd = campaignStart + _campaignLength;
+
+        // Generate initial incentives for the campaign.
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
-        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + _campaignLength, bytes32(0));
+        // Compute a random addition timestamp between campaignStart and campaignEnd.
+        uint32 additionTimestamp = uint32(campaignStart + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
+
+        // Encode action parameters and create the incentive campaign.
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
+        // Save the current rates for each incentive being added.
+        uint128[] memory initialRates = new uint128[](initialIncentives.length);
+        for (uint256 i = 0; i < initialIncentives.length; ++i) {
+            (, uint128 currentRate,) = umaMerkleChefAV.incentiveCampaignIdToIncentiveToStreamState(incentiveCampaignId, initialIncentives[i]);
+            initialRates[i] = currentRate;
+        }
+
+        // Generate additional incentives to be added.
         (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
 
+        // Expect events for token transfers or points spent when adding incentives.
         for (uint256 i = 0; i < addedIncentives.length; ++i) {
             if (incentiveLocker.isPointsProgram(addedIncentives[i])) {
                 vm.expectEmit(true, true, true, true);
@@ -29,23 +48,43 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
             }
         }
 
+        // Expect emission rate update and incentives added events.
+        vm.expectEmit(true, false, false, false);
+        emit UmaMerkleChefAV.EmissionRatesUpdated(incentiveCampaignId, new address[](0), new uint256[](0));
+
         vm.expectEmit(true, true, true, true);
         emit IncentiveLocker.IncentivesAdded(incentiveCampaignId, address(this), addedIncentives, addedAmounts);
 
-        skip(uint256(keccak256(abi.encode(incentiveCampaignId, _numAdded, _campaignLength))) % _campaignLength);
+        // Warp to the addition timestamp.
+        vm.warp(additionTimestamp);
 
+        // Call addIncentives to update the campaign.
         incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts);
 
+        // Retrieve the updated campaign state.
         (bool exists,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
             incentiveLocker.getIncentiveCampaignState(incentiveCampaignId);
 
         assertTrue(exists);
-        (address[] memory expectedTokens, uint256[] memory expectedAmounts) = mergeIncentives(initialIncentives, initialAmounts, addedIncentives, addedAmounts);
-        assertEq(storedIncentives.length, expectedTokens.length);
-        for (uint256 i = 0; i < expectedTokens.length; i++) {
-            assertEq(storedIncentives[i], expectedTokens[i]);
+        (address[] memory expectedIncentives, uint256[] memory expectedAmounts) =
+            mergeIncentives(initialIncentives, initialAmounts, addedIncentives, addedAmounts);
+        assertEq(storedIncentives.length, expectedIncentives.length);
+        for (uint256 i = 0; i < expectedIncentives.length; i++) {
+            assertEq(storedIncentives[i], expectedIncentives[i]);
             assertEq(storedAmounts[i], expectedAmounts[i]);
             assertEq(incentiveAmountsRemaining[i], expectedAmounts[i]);
+        }
+
+        // Check final streaming rates, streamed amounts, and lastUpdated timestamp for each added incentive.
+        uint256 remainingDuration = campaignEnd - additionTimestamp;
+        for (uint256 i = 0; i < expectedIncentives.length; ++i) {
+            (uint32 lastUpdated, uint128 newRate, uint256 streamed) =
+                umaMerkleChefAV.incentiveCampaignIdToIncentiveToStreamState(incentiveCampaignId, expectedIncentives[i]);
+            for (uint256 j = 0; j < initialIncentives.length; ++j) {
+                if (initialIncentives[j] == expectedIncentives[i]) {
+                    assertEq(streamed, uint256(initialRates[j]) * (additionTimestamp - campaignStart));
+                }
+            }
         }
     }
 }

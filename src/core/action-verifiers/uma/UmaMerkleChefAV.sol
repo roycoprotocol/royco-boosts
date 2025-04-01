@@ -95,6 +95,12 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Error thrown when an attempt is made to remove more incentives than are available.
     error RemovalLimitExceeded();
 
+    /// @dev Modifier restricting the caller to the IncentiveLocker.
+    modifier onlyIncentiveLocker() {
+        require(msg.sender == address(incentiveLocker), OnlyIncentiveLocker());
+        _;
+    }
+
     /// @notice Constructs the UmaMerkleChefAV.
     /// @param _owner The initial owner of the contract.
     /// @param _optimisticOracleV3 The address of the UMA Optimistic Oracle V3 contract.
@@ -112,12 +118,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     )
         UmaMerkleOracleBase(_owner, _optimisticOracleV3, _incentiveLocker, _whitelistedAsserters, _bondCurrency, _assertionLiveness)
     { }
-
-    /// @dev Modifier restricting the caller to the IncentiveLocker.
-    modifier onlyIncentiveLocker() {
-        require(msg.sender == address(incentiveLocker), OnlyIncentiveLocker());
-        _;
-    }
 
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.

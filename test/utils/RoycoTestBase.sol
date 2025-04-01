@@ -82,12 +82,12 @@ contract RoycoTestBase is Test {
 
     function setupDumbBaseEnvironment() public virtual {
         // Fork Mainnet
+        fork = vm.createFork(MAINNET_RPC_URL);
         setupWallets();
         setUpDumbContracts();
     }
 
     function setupIncentiveLocker() public virtual {
-        // Fork Mainnet
         setupWallets();
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
     }
@@ -121,6 +121,7 @@ contract RoycoTestBase is Test {
     }
 
     function setUpDumbContracts() public {
+        vm.selectFork(fork);
         // Deploy the Royco V2 contracts
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
         dumbAV = new DumbAV();
