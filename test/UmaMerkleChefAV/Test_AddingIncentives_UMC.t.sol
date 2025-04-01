@@ -83,7 +83,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
             console.log(campaignEnd);
             console.log(remainingDuration);
             assertLe(currentRate, expectedRate);
-            assertApproxEqRel(currentRate, expectedRate, 0.01e18);
+            assertApproxEqRel(currentRate, expectedRate, 0.001e18);
         }
     }
 }
