@@ -118,13 +118,12 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
-    /// @param _ip The address placing the incentives for this campaign.
     function processIncentiveCampaignCreation(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered,
         bytes memory _actionParams,
-        address _ip
+        address /*_ip*/
     )
         external
         override
@@ -148,14 +147,12 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _incentivesAdded The list of incentive token addresses added to the campaign.
     /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
-    /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
-    /// @param _ip The address placing the incentives for this campaign.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesAdded,
         uint256[] memory _incentiveAmountsAdded,
-        bytes memory _additionParams,
-        address _ip
+        bytes memory, /*_additionParams*/
+        address /*_ip*/
     )
         external
         override
@@ -172,14 +169,12 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _incentivesRemoved The list of incentive token addresses removed from the campaign.
     /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
-    /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
-    /// @param _ip The address placing the incentives for this campaign.
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesRemoved,
         uint256[] memory _incentiveAmountsRemoved,
-        bytes memory _removalParams,
-        address _ip
+        bytes memory, /*_removalParams*/
+        address /*_ip*/
     )
         external
         override

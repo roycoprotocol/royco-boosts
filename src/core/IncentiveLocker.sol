@@ -565,8 +565,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
-        // Get the next index at which an incentive will be inserted into incentivesOffered
-        uint256 indexForNextIncentive = _ics.incentivesOffered.length;
         // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             // Get the incentive offered and amount

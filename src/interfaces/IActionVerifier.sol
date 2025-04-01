@@ -2,7 +2,8 @@
 pragma solidity ^0.8.0;
 
 /// @title IActionVerifier
-/// @notice ActionVerifier interface for processing incentive campaign creation, modifications, and payouts.
+/// @notice ActionVerifier interface for processing incentive campaign creation, modifications, and claims.
+/// @dev ActionVerifiers implementing this interface should revert internally if the action results in an invalid campaign state.
 interface IActionVerifier {
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
