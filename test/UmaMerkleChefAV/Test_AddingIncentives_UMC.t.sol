@@ -86,4 +86,32 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
             assertApproxEqRel(currentRate, expectedRate, 0.001e18);
         }
     }
+
+    function test_RevertIf_AddIncentivesAfterCampaignEnded_UmaMerkleChefAV(uint8 _numAdded, uint32 _campaignLength, bytes memory _additionParams) public {
+        _numAdded = uint8(bound(_numAdded, 1, 10));
+        _campaignLength = uint32(bound(_campaignLength, 1 days, 365 days));
+
+        // Capture the campaign start and end timestamps.
+        uint32 campaignStart = uint32(block.timestamp);
+        uint32 campaignEnd = campaignStart + _campaignLength;
+
+        // Generate initial incentives for the campaign.
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+
+        // Compute a random addition timestamp between campaignStart and campaignEnd.
+        uint32 additionTimestamp = uint32(campaignEnd + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
+
+        // Encode action parameters and create the incentive campaign.
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
+
+        // Generate additional incentives to be added.
+        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
+
+        // Warp to the addition timestamp.
+        vm.warp(additionTimestamp);
+
+        vm.expectRevert(UmaMerkleChefAV.CampaignEnded.selector);
+        incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts, _additionParams);
+    }
 }
