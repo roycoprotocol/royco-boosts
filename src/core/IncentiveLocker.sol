@@ -222,10 +222,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _incentivesOffered Array of incentive token addresses.
     /// @param _incentiveAmountsOffered Array of amounts offered for each incentive.
+    /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
     function addIncentives(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
-        uint256[] memory _incentiveAmountsOffered
+        uint256[] memory _incentiveAmountsOffered,
+        bytes memory _additionParams
     )
         external
         nonReentrant
@@ -238,7 +240,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
 
         // Call hook on the Action Verifier to process the addition of incentives
-        IActionVerifier(ics.actionVerifier).processIncentivesAdded(_incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, msg.sender);
+        IActionVerifier(ics.actionVerifier).processIncentivesAdded(
+            _incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _additionParams, msg.sender
+        );
 
         emit IncentivesAdded(_incentiveCampaignId, msg.sender, _incentivesOffered, _incentiveAmountsOffered);
     }
@@ -247,11 +251,13 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @param _incentivesToRemove Array of incentive token addresses to remove.
     /// @param _incentiveAmountsToRemove Array of amounts to remove for each incentive.
+    /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
     function removeIncentives(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesToRemove,
         uint256[] memory _incentiveAmountsToRemove,
+        bytes memory _removalParams,
         address _recipient
     )
         external
@@ -295,7 +301,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         }
 
         // Call hook on the Action Verifier to process the removal of incentives
-        IActionVerifier(ics.actionVerifier).processIncentivesRemoved(_incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, msg.sender);
+        IActionVerifier(ics.actionVerifier).processIncentivesRemoved(
+            _incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, _removalParams, msg.sender
+        );
 
         // Emit removal event
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
@@ -310,21 +318,21 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         require(numClaims == _claimParams.length, ArrayLengthMismatch());
 
         for (uint256 i = 0; i < numClaims; ++i) {
-            claimIncentives(_ap, _incentiveCampaignIds[i], _claimParams[i]);
+            claimIncentives(_incentiveCampaignIds[i], _ap, _claimParams[i]);
         }
     }
 
     /// @notice Claims incentives for a given incentive campaign.
-    /// @param _ap The address of the action provider to claim incentives for.
     /// @param _incentiveCampaignId Incentive campaign identifier to claim incentives from.
+    /// @param _ap The address of the action provider to claim incentives for.
     /// @param _claimParams Claim parameters used by the action verifier to process the claim.
-    function claimIncentives(address _ap, bytes32 _incentiveCampaignId, bytes memory _claimParams) public nonReentrant {
+    function claimIncentives(bytes32 _incentiveCampaignId, address _ap, bytes memory _claimParams) public nonReentrant {
         // Retrieve the incentive campaign information.
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
 
         // Process the claim via the action verifier.
         (address[] memory incentives, uint256[] memory incentiveAmountsOwed) =
-            IActionVerifier(ics.actionVerifier).processClaim(_ap, _incentiveCampaignId, _claimParams);
+            IActionVerifier(ics.actionVerifier).processClaim(_incentiveCampaignId, _ap, _claimParams);
 
         // Get the protocol fee claimant for this ICS
         address protocolFeeClaimant = ics.protocolFeeClaimant;

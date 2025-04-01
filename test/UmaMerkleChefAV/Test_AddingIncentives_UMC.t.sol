@@ -9,7 +9,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         setupUmaMerkleChefBaseEnvironment();
     }
 
-    function test_AddIncentives_UmaMerkleChefAV(uint8 _numAdded, uint32 _campaignLength) public {
+    function test_AddIncentives_UmaMerkleChefAV(uint8 _numAdded, uint32 _campaignLength, bytes memory _additionParams) public {
         _numAdded = uint8(bound(_numAdded, 1, 10));
         _campaignLength = uint32(bound(_campaignLength, 1 days, 365 days));
 
@@ -21,8 +21,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         // Compute a random addition timestamp between campaignStart and campaignEnd.
-        uint32 additionTimestamp = uint32(campaignStart + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
-        vm.assume(additionTimestamp != campaignStart);
+        uint32 additionTimestamp = uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
 
         // Encode action parameters and create the incentive campaign.
         bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
@@ -59,7 +58,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         vm.warp(additionTimestamp);
 
         // Call addIncentives to update the campaign.
-        incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts);
+        incentiveLocker.addIncentives(incentiveCampaignId, addedIncentives, addedAmounts, _additionParams);
 
         // Retrieve the updated campaign state.
         (bool exists,,,,,, address[] memory storedIncentives, uint256[] memory storedAmounts, uint256[] memory incentiveAmountsRemaining) =
@@ -79,6 +78,10 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         for (uint256 i = 0; i < addedIncentives.length; ++i) {
             uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, addedIncentives[i]);
             uint256 expectedRate = initialRates[i] + ((addedAmounts[i] * (10 ** 18)) / remainingDuration);
+            console.log(campaignStart);
+            console.log(additionTimestamp);
+            console.log(campaignEnd);
+            console.log(remainingDuration);
             assertLe(currentRate, expectedRate);
             assertApproxEqRel(currentRate, expectedRate, 0.01e18);
         }
