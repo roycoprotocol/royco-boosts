@@ -5,7 +5,7 @@ import "../utils/RoycoTestBase.sol";
 
 contract Test_PointsRegistry is RoycoTestBase {
     function setUp() external {
-        setupIncentiveLocker();
+        setupDumbBaseEnvironment();
     }
 
     function test_PointsProgramCreation(
@@ -124,5 +124,28 @@ contract Test_PointsRegistry is RoycoTestBase {
 
         (address newOwner,,,) = incentiveLocker.getPointsProgramMetadata(pointsId);
         assertEq(newOwner, _newOwner);
+    }
+
+    function test_RevertIf_SpendingExceedsCap(address _ip, uint8 _numWhitelistedIps) public {
+        vm.assume(_ip != address(0));
+        vm.assume(_numWhitelistedIps > 0);
+
+        address[] memory whitelistedIps = new address[](_numWhitelistedIps);
+        uint256[] memory spendCaps = new uint256[](_numWhitelistedIps);
+        for (uint256 i = 0; i < _numWhitelistedIps; ++i) {
+            whitelistedIps[i] = address(bytes20(keccak256(abi.encode(_ip, _numWhitelistedIps, i))));
+            spendCaps[i] = uint128(uint256(keccak256(abi.encode(_ip, _numWhitelistedIps, i, whitelistedIps[i]))));
+        }
+        address pointsId = incentiveLocker.createPointsProgram("Points", "PTS", 18, whitelistedIps, spendCaps);
+
+        uint256 randomIPIndex = uint256(keccak256(abi.encode(block.timestamp, _ip, _numWhitelistedIps))) % _numWhitelistedIps;
+        address[] memory incentivesOffered = new address[](1);
+        uint256[] memory incentiveAmountsOffered = new uint256[](1);
+        incentivesOffered[0] = pointsId;
+        incentiveAmountsOffered[0] = spendCaps[randomIPIndex] + 1 + uint96(uint256(keccak256(abi.encode(_ip, _numWhitelistedIps, block.timestamp))));
+
+        vm.expectRevert(PointsRegistry.SpendCapExceeded.selector);
+        vm.prank(whitelistedIps[randomIPIndex]);
+        incentiveLocker.createIncentiveCampaign(address(dumbAV), new bytes(0), incentivesOffered, incentiveAmountsOffered);
     }
 }

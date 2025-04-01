@@ -66,8 +66,7 @@ abstract contract PointsRegistry {
     error OnlyPointsProgramOwner();
 
     /// @notice Thrown when an attempt to spend points exceeds the available spending cap.
-    /// @param capacityLeft The remaining spending capacity for this IP.
-    error SpendCapExceeded(uint256 capacityLeft);
+    error SpendCapExceeded();
 
     /// @notice Creates a new points program.
     /// @dev Generates a unique identifier, initializes the points program, and emits a creation event.
@@ -183,7 +182,7 @@ abstract contract PointsRegistry {
         // Check if the IP isn't the owner
         if (pointsProgram.owner != _ip) {
             // Ensure the cap isn't exceeded by the IPs attempt to spend points
-            require(pointsProgram.ipToSpendCap[_ip] >= _amount, SpendCapExceeded(pointsProgram.ipToSpendCap[_ip]));
+            require(pointsProgram.ipToSpendCap[_ip] >= _amount, SpendCapExceeded());
             // Mark these points as spent
             pointsProgram.ipToSpendCap[_ip] -= _amount;
         }
