@@ -9,7 +9,7 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 /// @title UmaMerkleChefAV
 /// @notice The Merkle Chef enables oracle based streaming for incentive campaigns created in the IncentiveLocker.
 ///         Emission rates can be modified during the campaign and are emitted by the MerkleChef.
-///         An offchain oracle periodically retrieves stream state to compute incentive remittances per AP.
+///         An offchain oracle retrieves all rates at given times to compute incentive remittances per AP.
 ///         It then posts merkle roots with a single lead: per AP containing incentive amounts owed.
 ///         Each merkle root posted for a campaign should be composed of leaves containing incentive amounts >= the previous root.
 ///         This contract extends UmaMerkleOracleBase to assert, resolve, and dispute Merkle roots posted by the oracle.
@@ -47,18 +47,8 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         bytes32[] merkleProof;
     }
 
-    /// @notice State of an incentive's stream for an incentive campaign originating from the incentive locker.
-    /// @custom:field lastUpdated The last timestamp at which the streamed field and currentRate (excluding creation) were updated.
-    /// @custom:field currentRate The current rate at which incentives are being streamed at until the end timestamp of the campaign.
-    /// @custom:field streamed The number of incentives already streamed until the lastUpdated timestamp. Updated whenever the rate changes after creation.
-    struct StreamState {
-        uint32 lastUpdated;
-        uint128 currentRate;
-        uint256 streamed;
-    }
-
-    /// @notice Maps an incentiveCampaignId to its incentives and their corresponding stream's state.
-    mapping(bytes32 id => mapping(address incentive => StreamState stream)) public incentiveCampaignIdToIncentiveToStreamState;
+    /// @notice Maps an incentiveCampaignId to its incentives and their corresponding current rate.
+    mapping(bytes32 id => mapping(address incentive => uint256 currentRate)) public incentiveCampaignIdToIncentiveToCurrentRate;
 
     /// @notice Maps an incentiveCampaignId to its most recently updated merkle root.
     /// @dev Every new root for an incentive campaign should contain leaves with incentive amounts >= previous roots.
@@ -257,7 +247,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     }
 
     /// @notice Modifies incentive streams based on the specified modification type.
-    /// @dev Updates the incentive streams either by initializing, increasing, or decreasing the streaming rates.
+    /// @dev Updates the incentive streams either by initializing, increasing, or decreasing the emission rates.
     /// @param _modification The type of modification to apply (INIT_STREAMS, INCREASE_RATE, or DECREASE_RATE).
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _startTimestamp The start timestamp for the incentive campaign.
@@ -282,9 +272,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         uint256 numIncentives = _incentives.length;
         uint256[] memory updatedRates = new uint256[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
-            // Get the stream state from storage
-            StreamState storage stream = incentiveCampaignIdToIncentiveToStreamState[_incentiveCampaignId][_incentives[i]];
-
             // If creating a new campaign
             if (_modification == Modifications.INIT_STREAMS) {
                 // Initialize the rate on creation
@@ -297,7 +284,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
                 uint256 remainingCampaignDuration = _endTimestamp - (campaignInProgress ? block.timestamp : _startTimestamp);
 
                 // Calculate the unstreamed incentives for this campaign
-                uint256 currentRate = stream.currentRate;
+                uint256 currentRate = incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentives[i]];
                 uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
 
                 // If adding incentives
@@ -310,18 +297,10 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
                     // Substract what you are removing from unstreamed incentives and recalculate the rate for the remaining campaign
                     updatedRates[i] = (unstreamedIncentives - _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
                 }
-
-                // If the campaign is in progress, update the stream's state with the amount streamed so far and the update timestamp
-                if (campaignInProgress) {
-                    uint32 lastUpdated = stream.lastUpdated;
-                    uint256 elapsedDurationSinceLastUpdate = (lastUpdated == 0 ? block.timestamp : lastUpdated) - _startTimestamp;
-                    stream.streamed += (currentRate * elapsedDurationSinceLastUpdate);
-                    stream.lastUpdated = uint32(block.timestamp);
-                }
             }
 
             // Update the rate for this incentive to the current rate
-            stream.currentRate = uint128(updatedRates[i]);
+            incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentives[i]] = updatedRates[i];
         }
 
         // Emit current emission rates for the oracle to read

@@ -21,12 +21,11 @@ contract RoycoTestBase is Test {
     uint64 public constant SECONDS_IN_A_DAY = 1 days;
     // Mainnet RPC URL for testing
     string public constant MAINNET_RPC_URL = "https://mainnet.gateway.tenderly.co";
-    // Array of 10 ETH mainnet token addresses.
+    // Array of 9 ETH mainnet token addresses.
     address[] public MAINNET_TOKENS = [
         0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, // WETH
         0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
         0x6B175474E89094C44Da98b954EedeAC495271d0F, // DAI
-        0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
         0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599, // WBTC
         0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984, // UNI
         0x514910771AF9Ca656af840dff83E8264EcF986CA, // LINK
