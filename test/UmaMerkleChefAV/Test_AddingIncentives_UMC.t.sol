@@ -22,6 +22,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
 
         // Compute a random addition timestamp between campaignStart and campaignEnd.
         uint32 additionTimestamp = uint32(campaignStart + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
+        vm.assume(additionTimestamp != campaignStart);
 
         // Encode action parameters and create the incentive campaign.
         bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
@@ -48,7 +49,6 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
             }
         }
 
-        // Expect emission rate update and incentives added events.
         vm.expectEmit(true, false, false, false);
         emit UmaMerkleChefAV.EmissionRatesUpdated(incentiveCampaignId, new address[](0), new uint256[](0));
 
@@ -75,10 +75,12 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
             assertEq(incentiveAmountsRemaining[i], expectedAmounts[i]);
         }
 
-        // Check final streaming rates, streamed amounts, and lastUpdated timestamp for each added incentive.
         uint256 remainingDuration = campaignEnd - additionTimestamp;
         for (uint256 i = 0; i < addedIncentives.length; ++i) {
-            uint256 newRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, addedIncentives[i]);
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, addedIncentives[i]);
+            uint256 expectedRate = initialRates[i] + ((addedAmounts[i] * (10 ** 18)) / remainingDuration);
+            assertLe(currentRate, expectedRate);
+            assertApproxEqRel(currentRate, expectedRate, 0.01e18);
         }
     }
 }

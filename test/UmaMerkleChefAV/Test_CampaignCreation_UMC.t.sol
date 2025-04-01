@@ -73,7 +73,7 @@ contract Test_CampaignCreation_UMC is RoycoTestBase {
             uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, storedIncentivesOffered[i]);
             uint256 expectedRate = (storedIncentiveAmountsOffered[i] * (10 ** 18)) / (_endTimestamp - _startTimestamp);
             assertLe(currentRate, expectedRate);
-            assertApproxEqRel(currentRate, expectedRate, 0.01e18);
+            assertApproxEqRel(currentRate, expectedRate, 0.001e18);
         }
     }
 }

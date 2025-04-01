@@ -332,6 +332,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     function getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint32 startTimestamp, uint32 endTimestamp) {
         uint64 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
         startTimestamp = uint32(duration >> 32);
-        endTimestamp = uint32(duration & 0xFFFFFFFF);
+        endTimestamp = uint32(duration);
     }
 }
