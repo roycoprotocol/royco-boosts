@@ -347,6 +347,9 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         // Calculate the remaining campaign duration (account for unstarted campaigns)
         uint256 remainingCampaignDuration = endTimestamp - (campaignInProgress ? block.timestamp : startTimestamp);
 
+        // Initialize the return array with the correct length
+        maxRemovableIncentives = new uint256[](_incentivesToRemove.length);
+        
         for (uint256 i = 0; i < _incentivesToRemove.length; ++i) {
             // Calculate the unstreamed incentives for this campaign
             uint256 currentRate = incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentivesToRemove[i]];
