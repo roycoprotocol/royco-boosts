@@ -333,4 +333,25 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         startTimestamp = uint32(duration >> 32);
         endTimestamp = uint32(duration);
     }
+
+    /// @notice Returns the maximum number of incentives that can be removed from a given campaign.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
+    /// @param _incentivesToRemove The list of incentive token addresses to check.
+    /// @return maxRemovableIncentives The maximum number of incentives that can be removed, in the same order as the _incentivesToRemove array.
+    function getUnspentAmounts(bytes32 _incentiveCampaignId, address[] memory _incentivesToRemove) external view returns (uint256[] memory maxRemovableIncentives) {
+        // Get the start and end timestamps for the campaign
+        (uint32 startTimestamp, uint32 endTimestamp) = getCampaignTimestamps(_incentiveCampaignId);
+
+        // Check if the campaign is in progress
+        bool campaignInProgress = block.timestamp > startTimestamp;
+        // Calculate the remaining campaign duration (account for unstarted campaigns)
+        uint256 remainingCampaignDuration = endTimestamp - (campaignInProgress ? block.timestamp : startTimestamp);
+
+        for (uint256 i = 0; i < _incentivesToRemove.length; ++i) {
+            // Calculate the unstreamed incentives for this campaign
+            uint256 currentRate = incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentivesToRemove[i]];
+            uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
+            maxRemovableIncentives[i] = unstreamedIncentives;
+        }
+    }
 }

@@ -260,7 +260,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         bytes memory _removalParams,
         address _recipient
     )
-        external
+        public
         nonReentrant
     {
         uint256 numIncentives = _incentivesToRemove.length;
@@ -307,6 +307,24 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
         // Emit removal event
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
+    }
+
+    /// @notice Removes all incentives from an existing incentive campaign.
+    /// @param _incentiveCampaignId The incentive campaign identifier.
+    /// @param _incentivesToRemove Array of incentive token addresses to remove.
+    /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
+    /// @param _recipient The address to send the removed incentives to.
+    function MaxRemoveIncentives(
+        bytes32 _incentiveCampaignId,
+        address[] memory _incentivesToRemove,
+        bytes memory _removalParams,
+        address _recipient
+    ) external { 
+        ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
+        // Call Action Verifier to get maximum removable incentives
+        uint256[] memory maxRemovableIncentives = IActionVerifier(ics.actionVerifier).getUnspentAmounts(_incentiveCampaignId, _incentivesToRemove);
+        // Call removeIncentives with the max removable incentives
+        removeIncentives(_incentiveCampaignId, _incentivesToRemove, maxRemovableIncentives, _removalParams, _recipient);
     }
 
     /// @notice Claims incentives for given incentive campaign identifiers.

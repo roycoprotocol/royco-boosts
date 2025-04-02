@@ -63,4 +63,10 @@ interface IActionVerifier {
     )
         external
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed);
+
+    /// @notice Returns the maximum number of incentives that can be removed from a given campaign.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
+    /// @param _incentivesToRemove The list of incentive token addresses to check.
+    /// @return maxRemovableIncentives The maximum number of incentives that can be removed, in the same order as the _incentivesToRemove array.
+    function getUnspentAmounts(bytes32 _incentiveCampaignId, address[] memory _incentivesToRemove) external view returns (uint256[] memory maxRemovableIncentives);
 }
