@@ -9,8 +9,8 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 /// @title UmaMerkleChefAV
 /// @notice The Merkle Chef enables oracle based streaming for incentive campaigns created in the IncentiveLocker.
 ///         Emission rates can be modified during the campaign and are emitted by the MerkleChef.
-///         An offchain oracle retrieves all rates at given times to compute incentive remittances per AP.
-///         It then posts merkle roots with a single lead: per AP containing incentive amounts owed.
+///         An offchain oracle retrieves all rates during the campaign to compute incentive remittances per AP.
+///         It periodically posts merkle roots with a single leaf per AP containing their incentive amounts owed.
 ///         Each merkle root posted for a campaign should be composed of leaves containing incentive amounts >= the previous root.
 ///         This contract extends UmaMerkleOracleBase to assert, resolve, and dispute Merkle roots posted by the oracle.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.

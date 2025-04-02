@@ -5,7 +5,7 @@ import "../../lib/forge-std/src/Test.sol";
 import "../../lib/forge-std/src/Vm.sol";
 
 import { IncentiveLocker, PointsRegistry, ERC20, SafeTransferLib } from "../../src/core/IncentiveLocker.sol";
-import { UmaMerkleChefAV } from "../../src/core/action-verifiers/uma/UmaMerkleChefAV.sol";
+import { UmaMerkleChefAV, UmaMerkleOracleBase } from "../../src/core/action-verifiers/uma/UmaMerkleChefAV.sol";
 import { DumbAV } from "./DumbAV.sol";
 
 contract RoycoTestBase is Test {

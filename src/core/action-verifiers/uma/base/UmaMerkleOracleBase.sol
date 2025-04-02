@@ -49,25 +49,21 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     mapping(bytes32 id => MerkleRootAssertion assertion) public assertionIdToMerkleRootAssertion;
 
     /// @notice Emitted when a Merkle root is asserted.
-    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
-    /// @param merkleRoot The Merkle root being asserted.
-    /// @param asserter The address that made the assertion.
     /// @param assertionId The unique ID of the assertion in UMA's OO system.
-    event MerkleRootAsserted(bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId);
+    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
+    /// @param asserter The address that made the assertion.
+    /// @param merkleRoot The Merkle root being asserted.
+    event MerkleRootAsserted(bytes32 indexed assertionId, bytes32 indexed incentiveCampaignId, address indexed asserter, bytes32 merkleRoot);
 
     /// @notice Emitted when a previously asserted Merkle root is resolved (validated true by the OO).
-    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
-    /// @param merkleRoot The Merkle root that was verified.
-    /// @param asserter The address that originally made the assertion.
     /// @param assertionId The unique ID of the assertion in UMA's OO system.
-    event MerkleRootAssertionResolved(bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId);
+    /// @param merkleRoot The Merkle root that was verified.
+    event MerkleRootAssertionResolved(bytes32 indexed assertionId, bytes32 merkleRoot);
 
     /// @notice Emitted when a Merkle root is disputed for an offer.
-    /// @param incentiveCampaignId The incentiveCampaignId associated with this Merkle root in `IncentiveLocker`.
-    /// @param merkleRoot The Merkle root that was verified.
-    /// @param asserter The address that originally made the assertion.
     /// @param assertionId The unique ID of the assertion in UMA's OO system.
-    event MerkleRootAssertionDisputed(bytes32 indexed incentiveCampaignId, bytes32 merkleRoot, address indexed asserter, bytes32 indexed assertionId);
+    /// @param merkleRoot The Merkle root that was verified.
+    event MerkleRootAssertionDisputed(bytes32 indexed assertionId, bytes32 merkleRoot);
 
     /// @notice Emitted when asserters are whitelisted.
     /// @param whitelistedAsserters An array of whitelisted asserters.
@@ -197,7 +193,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         assertionIdToMerkleRootAssertion[assertionId] = MerkleRootAssertion(_incentiveCampaignId, _merkleRoot, msg.sender, false);
 
         // Emit assertion event
-        emit MerkleRootAsserted(_incentiveCampaignId, _merkleRoot, msg.sender, assertionId);
+        emit MerkleRootAsserted(assertionId, _incentiveCampaignId, msg.sender, _merkleRoot);
     }
 
     /// @notice UMA callback invoked when an assertion is resolved.
@@ -213,9 +209,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
             // Call the ActionVerifier specific hook
             _processTruthfulAssertionResolution(merkleRootAssertion);
             // Emit resolution event
-            emit MerkleRootAssertionResolved(
-                merkleRootAssertion.incentiveCampaignId, merkleRootAssertion.merkleRoot, merkleRootAssertion.asserter, _assertionId
-            );
+            emit MerkleRootAssertionResolved(_assertionId, merkleRootAssertion.merkleRoot);
         } else {
             // Remove the assertion data to save gas (false assertion).
             delete assertionIdToMerkleRootAssertion[_assertionId];
@@ -231,7 +225,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         // Call the ActionVerifier specific hook
         _processAssertionDispute(merkleRootAssertion);
         // Emit dispute event
-        emit MerkleRootAssertionDisputed(merkleRootAssertion.incentiveCampaignId, merkleRootAssertion.merkleRoot, merkleRootAssertion.asserter, _assertionId);
+        emit MerkleRootAssertionDisputed(_assertionId, merkleRootAssertion.merkleRoot);
     }
 
     /// @notice Updates the asserter whitelist.
