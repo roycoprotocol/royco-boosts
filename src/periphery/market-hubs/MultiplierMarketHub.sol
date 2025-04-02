@@ -39,15 +39,19 @@ contract MultiplierMarketHub {
     /// @param size Optional quantitative parameter offered by the AP.
     event APOfferFilled(bytes32 indexed apOfferHash, bytes32 indexed incentiveCampaignId, address indexed ap, uint96 multiplier, uint256 size);
 
-    error OnlyTheIpCanFill();
+    error OnlyIP();
     error NonexistantIncentiveCampaign();
+    error AlreadyOptedIn();
     error IncentiveCampaignExpired();
 
     /// @notice Address of the Incentive Locker contract used to manage incentive campaigns.
     IncentiveLocker public immutable incentiveLocker;
 
+    /// @notice Mapping from incentiveCampaignId to if an AP opted in.
+    mapping(bytes32 id => mapping(address ap => bool optedIn)) public incentiveCampaignIdToApToOptedIn;
+
     /// @notice Mapping from offer hash to its AP offer details.
-    mapping(bytes32 => APOffer) public offerHashToAPOffer;
+    mapping(bytes32 offerHash => APOffer offer) public offerHashToAPOffer;
 
     /// @notice Counter for the number of offers created.
     uint256 numApOffers;
@@ -59,7 +63,7 @@ contract MultiplierMarketHub {
         require(exists, NonexistantIncentiveCampaign());
 
         // Check that the caller is the IP if specified
-        require(!_checkCallerIsIP || msg.sender == ip, OnlyTheIpCanFill());
+        require(!_checkCallerIsIP || msg.sender == ip, OnlyIP());
         _;
     }
 
@@ -74,6 +78,8 @@ contract MultiplierMarketHub {
     /// @param _incentiveCampaignId Incentive campaign identifier.
     function optIn(bytes32 _incentiveCampaignId) external incentiveCampaignChecks(_incentiveCampaignId, false) {
         // Todo: Think about sybil attacks on this function which exhaust oracle resources (subgraph requests and rpc calls)
+        require(!incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender], AlreadyOptedIn());
+        incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender] = true;
 
         // Emit the event indicating the IP offer has been filled.
         emit OptedInToIncentiveCampaign(_incentiveCampaignId, msg.sender);
