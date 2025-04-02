@@ -34,7 +34,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     struct ActionParams {
         uint32 startTimestamp;
         uint32 endTimestamp;
-        bytes ipfsCID;
+        bytes32 ipfsCID;
     }
 
     /// @notice Parameters used for user claims.
