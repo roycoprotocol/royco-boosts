@@ -86,6 +86,49 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         }
     }
 
+    function test_RevertIf_RemoveIncentivesGtMax_UmaMerkleChefAV(uint8 _numRemoved, uint32 _campaignLength, bytes memory _removalParams) public {
+        _numRemoved = uint8(bound(_numRemoved, 1, 10));
+        _campaignLength = uint32(bound(_campaignLength, 1 days, 365 days));
+
+        // Define campaign start and end timestamps.
+        uint32 campaignStart = uint32(block.timestamp);
+        uint32 campaignEnd = campaignStart + _campaignLength;
+
+        // Compute a removal timestamp in (campaignStart+1, campaignEnd).
+        uint32 removalTimestamp =
+            uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numRemoved, _campaignLength, _removalParams))) % (_campaignLength - 1)));
+
+        // Generate initial incentives (10 tokens) and amounts.
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+
+        // Encode campaign parameters and create the incentive campaign.
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
+
+        // Prepare removal arrays for the first _numRemoved tokens.
+        uint256 numToRemove = _numRemoved;
+        address[] memory removalIncentives = new address[](numToRemove);
+        uint256[] memory removalAmounts = new uint256[](numToRemove);
+        uint256 indexExceedingMax = uint256(keccak256(abi.encode(_numRemoved, _campaignLength, _removalParams))) % _numRemoved;
+        for (uint256 i = 0; i < numToRemove; i++) {
+            removalIncentives[i] = initialIncentives[i];
+            // Maximum removable amount is proportional to the remaining time:
+            // maxRemovable = initialAmounts[i] * (campaignEnd - removalTimestamp) / (campaignEnd - campaignStart)
+            uint256 maxRemovable = (initialAmounts[i] * (campaignEnd - removalTimestamp)) / (campaignEnd - campaignStart);
+            if (i == indexExceedingMax) {
+                removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, removalTimestamp))), maxRemovable, type(uint256).max);
+            } else {
+                removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, removalTimestamp))), 0, maxRemovable);
+            }
+        }
+
+        // Warp to the removal timestamp.
+        vm.warp(removalTimestamp);
+
+        vm.expectRevert(UmaMerkleChefAV.RemovalLimitExceeded.selector);
+        incentiveLocker.removeIncentives(incentiveCampaignId, removalIncentives, removalAmounts, _removalParams, address(this));
+    }
+
     function test_RevertIf_RemoveIncentivesAfterCampaignEnded_UmaMerkleChefAV(uint8 _numRemoved, uint32 _campaignLength, bytes memory _removalParams) public {
         _numRemoved = uint8(bound(_numRemoved, 1, 10));
         _campaignLength = uint32(bound(_campaignLength, 1 days, 365 days));

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import { IncentiveLocker } from "../../core/IncentiveLocker.sol";
 
 /// @title MultiplierMarketHub
-/// @notice Manages negotiation for multiplier based IAMs with offers from Incentive Providers (IP) and Action Providers (AP).
+/// @notice Manages opt-ins and negotiations for multiplier based incentive campaigns.
 contract MultiplierMarketHub {
     /// @notice The max multipler that can be counter-offered by an AP.
     /// @dev Multipliers are denominated in BPS. 1e3 constitutes a 10x multiplier.
