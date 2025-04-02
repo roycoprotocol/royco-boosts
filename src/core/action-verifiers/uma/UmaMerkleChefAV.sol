@@ -34,7 +34,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     struct ActionParams {
         uint32 startTimestamp;
         uint32 endTimestamp;
-        bytes32 ipfsCID;
+        bytes ipfsCID;
     }
 
     /// @notice Parameters used for user claims.
@@ -64,7 +64,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Emitted when the incentive rates for a campaign are updated.
     /// @param incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param incentives The array of incentive token addresses updated.
+    /// @param incentives The array of incentives updated.
     /// @param updatedRates The new incentive streaming rates for each corresponding token.
     event EmissionRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
@@ -115,7 +115,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
-    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentivesOffered Array of incentives.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
     function processIncentiveCampaignCreation(
@@ -145,7 +145,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Processes the addition of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param _incentivesAdded The list of incentive token addresses added to the campaign.
+    /// @param _incentivesAdded The list of incentives added to the campaign.
     /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
@@ -159,7 +159,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         onlyIncentiveLocker
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = getCampaignTimestamps(_incentiveCampaignId);
+        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
         _modifyIncentiveStreams(Modifications.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
@@ -167,7 +167,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Processes the removal of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param _incentivesRemoved The list of incentive token addresses removed from the campaign.
+    /// @param _incentivesRemoved The list of  removed from the campaign.
     /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
@@ -181,7 +181,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         onlyIncentiveLocker
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = getCampaignTimestamps(_incentiveCampaignId);
+        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
         _modifyIncentiveStreams(Modifications.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
@@ -191,7 +191,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign to claim incentives from.
     /// @param _ap The address of the action provider (AP) to process the claim for.
     /// @param _claimParams Encoded parameters required for processing the claim.
-    /// @return incentives The incentive token addresses to be paid out to the AP.
+    /// @return incentives The  to be paid out to the AP.
     /// @return incentiveAmountsOwed The amounts owed for each incentive token in the incentives array.
     function processClaim(
         bytes32 _incentiveCampaignId,
@@ -246,13 +246,43 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         return (incentives, incentiveAmountsOwed);
     }
 
+    /// @notice Returns the maximum amounts that can be removed from a given campaign for the specified incentives.
+    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
+    /// @param _incentivesToRemove The list of incentives to check maximum removable amounts for.
+    /// @return maxRemovableIncentiveAmounts The maximum number of incentives that can be removed, in the same order as the _incentivesToRemove array.
+    function getMaxRemovableIncentiveAmounts(
+        bytes32 _incentiveCampaignId,
+        address[] memory _incentivesToRemove
+    )
+        external
+        view
+        returns (uint256[] memory maxRemovableIncentiveAmounts)
+    {
+        // Get the start and end timestamps for the campaign
+        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+
+        // Check if the campaign is in progress
+        bool campaignInProgress = block.timestamp > startTimestamp;
+        // Calculate the remaining campaign duration (account for unstarted campaigns)
+        uint256 remainingCampaignDuration = endTimestamp - (campaignInProgress ? block.timestamp : startTimestamp);
+
+        uint256 numIncentives = _incentivesToRemove.length;
+        maxRemovableIncentiveAmounts = new uint256[](numIncentives);
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Calculate the unstreamed incentives for this campaign
+            uint256 currentRate = incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentivesToRemove[i]];
+            uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
+            maxRemovableIncentiveAmounts[i] = unstreamedIncentives;
+        }
+    }
+
     /// @notice Modifies incentive streams based on the specified modification type.
     /// @dev Updates the incentive streams either by initializing, increasing, or decreasing the emission rates.
     /// @param _modification The type of modification to apply (INIT_STREAMS, INCREASE_RATE, or DECREASE_RATE).
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _startTimestamp The start timestamp for the incentive campaign.
     /// @param _endTimestamp The end timestamp for the incentive campaign.
-    /// @param _incentives The array of incentive token addresses.
+    /// @param _incentives The array of incentives.
     /// @param _incentiveAmounts The corresponding amounts for each incentive.
     function _modifyIncentiveStreams(
         Modifications _modification,
@@ -328,30 +358,11 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @return startTimestamp The start timestamp stored in the upper 32 bits.
     /// @return endTimestamp The end timestamp stored in the lower 32 bits.
-    function getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint32 startTimestamp, uint32 endTimestamp) {
+    function _getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint32 startTimestamp, uint32 endTimestamp) {
         uint64 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
+        // Shift right to get the upper 32 bits
         startTimestamp = uint32(duration >> 32);
+        // Simple cast to get the lower 32 bits
         endTimestamp = uint32(duration);
-    }
-
-    /// @notice Returns the maximum number of incentives that can be removed from a given campaign.
-    /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @param _incentivesToRemove The list of incentive token addresses to check.
-    /// @return maxRemovableIncentives The maximum number of incentives that can be removed, in the same order as the _incentivesToRemove array.
-    function getUnspentAmounts(bytes32 _incentiveCampaignId, address[] memory _incentivesToRemove) external view returns (uint256[] memory maxRemovableIncentives) {
-        // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = getCampaignTimestamps(_incentiveCampaignId);
-
-        // Check if the campaign is in progress
-        bool campaignInProgress = block.timestamp > startTimestamp;
-        // Calculate the remaining campaign duration (account for unstarted campaigns)
-        uint256 remainingCampaignDuration = endTimestamp - (campaignInProgress ? block.timestamp : startTimestamp);
-
-        for (uint256 i = 0; i < _incentivesToRemove.length; ++i) {
-            // Calculate the unstreamed incentives for this campaign
-            uint256 currentRate = incentiveCampaignIdToIncentiveToCurrentRate[_incentiveCampaignId][_incentivesToRemove[i]];
-            uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
-            maxRemovableIncentives[i] = unstreamedIncentives;
-        }
     }
 }

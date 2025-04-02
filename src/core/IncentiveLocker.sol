@@ -58,7 +58,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param actionVerifier The address verifying the incentive conditions.
     /// @param actionParams Arbitrary action parameters.
     /// @param defaultProtocolFee The protocol fee rate.
-    /// @param incentivesOffered Array of incentive token addresses.
+    /// @param incentivesOffered Array of incentives.
     /// @param incentiveAmountsOffered Array of net incentive amounts offered for each token.
     event IncentiveCampaignCreated(
         bytes32 indexed incentiveCampaignId,
@@ -83,14 +83,14 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Emitted when incentives are added to an incentive campaign.
     /// @param incentiveCampaignId The incentive campaign identifier.
     /// @param ip The address of the IP adding the incentives.
-    /// @param incentivesOffered The array of incentive token addresses offered.
+    /// @param incentivesOffered The array of incentives offered.
     /// @param incentiveAmountsOffered The array of amounts offered for each incentive token.
     event IncentivesAdded(bytes32 indexed incentiveCampaignId, address indexed ip, address[] incentivesOffered, uint256[] incentiveAmountsOffered);
 
     /// @notice Emitted when incentives are removed from an incentive campaign.
     /// @param incentiveCampaignId The incentive campaign identifier.
     /// @param ip The address of the IP adding the incentives.
-    /// @param incentivesRemoved The array of incentive token addresses removed.
+    /// @param incentivesRemoved The array of incentives removed.
     /// @param incentiveAmountsRemoved The array of amounts removed for each incentive token.
     event IncentivesRemoved(bytes32 indexed incentiveCampaignId, address indexed ip, address[] incentivesRemoved, uint256[] incentiveAmountsRemoved);
 
@@ -150,7 +150,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
-    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentivesOffered Array of incentives.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @return incentiveCampaignId The unique identifier for the created incentive campaign.
     function createIncentiveCampaign(
@@ -175,7 +175,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ics.actionVerifier = _actionVerifier;
         ics.actionParams = _actionParams;
 
-        // Call hook on the Action Verifier to process the creation of this incentive campaign
+        // Call the hook on the Action Verifier to process the creation of this incentive campaign
         IActionVerifier(_actionVerifier).processIncentiveCampaignCreation(
             incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _actionParams, msg.sender
         );
@@ -220,7 +220,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Adds incentives to an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentivesOffered Array of incentives.
     /// @param _incentiveAmountsOffered Array of amounts offered for each incentive.
     /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
     function addIncentives(
@@ -239,7 +239,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         // Pull incentives from the IP and update the ICS accounting
         _pullIncentivesAndUpdateAccounting(ics, _incentivesOffered, _incentiveAmountsOffered);
 
-        // Call hook on the Action Verifier to process the addition of incentives
+        // Call the hook on the Action Verifier to process the addition of incentives
         IActionVerifier(ics.actionVerifier).processIncentivesAdded(
             _incentiveCampaignId, _incentivesOffered, _incentiveAmountsOffered, _additionParams, msg.sender
         );
@@ -249,7 +249,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Removes incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of incentive token addresses to remove.
+    /// @param _incentivesToRemove Array of incentives to remove.
     /// @param _incentiveAmountsToRemove Array of amounts to remove for each incentive.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
@@ -300,7 +300,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             }
         }
 
-        // Call hook on the Action Verifier to process the removal of incentives
+        // Call the hook on the Action Verifier to process the removal of incentives
         IActionVerifier(ics.actionVerifier).processIncentivesRemoved(
             _incentiveCampaignId, _incentivesToRemove, _incentiveAmountsToRemove, _removalParams, msg.sender
         );
@@ -309,21 +309,23 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         emit IncentivesRemoved(_incentiveCampaignId, msg.sender, _incentivesToRemove, _incentiveAmountsToRemove);
     }
 
-    /// @notice Removes all incentives from an existing incentive campaign.
+    /// @notice Removes the maximum amounts of incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of incentive token addresses to remove.
+    /// @param _incentivesToRemove Array of  to remove.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
-    function MaxRemoveIncentives(
+    function maxRemoveIncentives(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesToRemove,
         bytes memory _removalParams,
         address _recipient
-    ) external { 
+    )
+        external
+    {
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
-        // Call Action Verifier to get maximum removable incentives
-        uint256[] memory maxRemovableIncentives = IActionVerifier(ics.actionVerifier).getUnspentAmounts(_incentiveCampaignId, _incentivesToRemove);
-        // Call removeIncentives with the max removable incentives
+        // Call the hook on the Action Verifier to get the maximum removable incentive amounts
+        uint256[] memory maxRemovableIncentives = IActionVerifier(ics.actionVerifier).getMaxRemovableIncentiveAmounts(_incentiveCampaignId, _incentivesToRemove);
+        // Call the hook on the Action Verifier to process the maximum removal of incentives
         removeIncentives(_incentiveCampaignId, _incentivesToRemove, maxRemovableIncentives, _removalParams, _recipient);
     }
 
@@ -382,7 +384,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @return protocolFeeClaimant The protocol fee recipient.
     /// @return actionVerifier The address of the action verifier.
     /// @return actionParams The parameters describing the action.
-    /// @return incentivesOffered Array of offered incentive token addresses.
+    /// @return incentivesOffered Array of offered incentives.
     /// @return incentiveAmountsOffered Array of total amounts offered per token.
     /// @return incentiveAmountsRemaining Array of amounts remaining per token.
     function getIncentiveCampaignState(bytes32 _incentiveCampaignId)
@@ -444,7 +446,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @param _incentiveCampaignId The incentive campaign identifier.
     /// @return exists Boolean indicating whether or not the incentive campaign exists.
     /// @return ip The address of the incentive provider.
-    /// @return incentivesOffered Array of offered incentive token addresses.
+    /// @return incentivesOffered Array of offered incentives.
     /// @return incentiveAmountsOffered Array of total amounts offered per token.
     /// @return incentiveAmountsRemaining Array of amounts remaining per token.
     function getIncentiveCampaignIncentiveInfo(bytes32 _incentiveCampaignId)
@@ -577,7 +579,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Pulls incentives from the incentive provider and updates accounting.
     /// @param _ics Storage reference to the incentive campaign information.
-    /// @param _incentivesOffered Array of incentive token addresses.
+    /// @param _incentivesOffered Array of incentives.
     /// @param _incentiveAmountsOffered Total amounts provided for each incentive (including fees).
     function _pullIncentivesAndUpdateAccounting(ICS storage _ics, address[] memory _incentivesOffered, uint256[] memory _incentiveAmountsOffered) internal {
         uint256 numIncentives = _incentivesOffered.length;
