@@ -6,6 +6,10 @@ import { IncentiveLocker } from "../../core/IncentiveLocker.sol";
 /// @title MultiplierMarketHub
 /// @notice Manages negotiation for multiplier based IAMs with offers from Incentive Providers (IP) and Action Providers (AP).
 contract MultiplierMarketHub {
+    /// @notice The max multipler that can be counter-offered by an AP.
+    /// @dev Multipliers are denominated in BPS. 1e3 constitutes a 10x multiplier.
+    uint256 public constant MAX_MULTIPLIER = 1e3;
+
     /// @notice Details for an AP offer.
     /// @param ap Address of the Action Provider.
     /// @param multiplier Multiplier proposed by the AP.
@@ -42,6 +46,7 @@ contract MultiplierMarketHub {
     error OnlyIP();
     error NonexistantIncentiveCampaign();
     error AlreadyOptedIn();
+    error MaxMultiplierExceeded();
     error IncentiveCampaignExpired();
 
     /// @notice Address of the Incentive Locker contract used to manage incentive campaigns.
@@ -99,6 +104,9 @@ contract MultiplierMarketHub {
         incentiveCampaignChecks(_incentiveCampaignId, false)
         returns (bytes32 apOfferHash)
     {
+        // Ensure that multiplier doesn't exceed the maximum
+        require(_multiplier <= MAX_MULTIPLIER, MaxMultiplierExceeded());
+
         // Compute the AP offer hash using an incremental counter and provided parameters.
         apOfferHash = keccak256(abi.encode(++numApOffers, _incentiveCampaignId, _multiplier, _size));
 

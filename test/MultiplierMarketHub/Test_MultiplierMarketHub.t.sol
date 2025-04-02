@@ -45,6 +45,8 @@ contract Test_MultiplierMarketHub is RoycoTestBase {
     }
 
     function test_CreateAPOffer(address _ap, uint96 _multiplier, uint256 _size) public prankModifier(_ap) {
+        _multiplier = uint96(bound(_multiplier, 0, multiplierMarketHub.MAX_MULTIPLIER()));
+
         vm.expectEmit(true, false, true, true, address(multiplierMarketHub));
         emit MultiplierMarketHub.APOfferCreated(incentiveCampaignId, bytes32(0), _ap, _multiplier, _size);
 
@@ -57,7 +59,16 @@ contract Test_MultiplierMarketHub is RoycoTestBase {
         assertEq(incentiveCampaignId, _incentiveCampaignId);
     }
 
+    function test_RevertIf_CreateAPOfferExceedsMaxMultiplier(address _ap, uint96 _multiplier, uint256 _size) public prankModifier(_ap) {
+        _multiplier = uint96(bound(_multiplier, multiplierMarketHub.MAX_MULTIPLIER() + 1, type(uint96).max));
+
+        vm.expectRevert(MultiplierMarketHub.MaxMultiplierExceeded.selector);
+        bytes32 apOfferHash = multiplierMarketHub.createAPOffer(incentiveCampaignId, _multiplier, _size);
+    }
+
     function test_FillAPOffer(address _ap, uint96 _multiplier, uint256 _size) public {
+        _multiplier = uint96(bound(_multiplier, 0, multiplierMarketHub.MAX_MULTIPLIER()));
+
         vm.prank(_ap);
         bytes32 apOfferHash = multiplierMarketHub.createAPOffer(incentiveCampaignId, _multiplier, _size);
 
@@ -70,6 +81,7 @@ contract Test_MultiplierMarketHub is RoycoTestBase {
 
     function test_RevertIf_FillAPOfferAsNotIP(address _ip, address _ap, uint96 _multiplier, uint256 _size) public {
         vm.assume(_ip != ip);
+        _multiplier = uint96(bound(_multiplier, 0, multiplierMarketHub.MAX_MULTIPLIER()));
 
         vm.prank(_ap);
         bytes32 apOfferHash = multiplierMarketHub.createAPOffer(incentiveCampaignId, _multiplier, _size);
