@@ -82,7 +82,6 @@ contract MultiplierMarketHub {
     /// @dev Callable by APs.
     /// @param _incentiveCampaignId Incentive campaign identifier.
     function optIn(bytes32 _incentiveCampaignId) external incentiveCampaignChecks(_incentiveCampaignId, false) {
-        // Todo: Think about sybil attacks on this function which exhaust oracle resources (subgraph requests and rpc calls)
         require(!incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender], AlreadyOptedIn());
         incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender] = true;
 
