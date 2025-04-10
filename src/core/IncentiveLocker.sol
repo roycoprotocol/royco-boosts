@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { Ownable, Ownable2Step } from "../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
-import { ReentrancyGuardTransient } from "../../../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
+import { Ownable, Ownable2Step } from "../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import { ReentrancyGuardTransient } from "../../lib/openzeppelin-contracts/contracts/utils/ReentrancyGuardTransient.sol";
 import { ERC20 } from "../../lib/solmate/src/tokens/ERC20.sol";
 import { SafeTransferLib } from "../../lib/solmate/src/utils/SafeTransferLib.sol";
 import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
@@ -10,7 +10,9 @@ import { PointsRegistry } from "./base/PointsRegistry.sol";
 import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title IncentiveLocker
-/// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
+/// @notice A singleton contract responsible for creating incentive campaigns, adding and removing incentives to/from existing campaigns, fee accounting, and
+///         facilitating incentive claims for all Royco V2 campaigns. It interfaces with Action Verifiers to process campaign creations, modifications, and
+///         incentive claims. Additionally, maintains a points program registry which streamlines points program creation, delegation, and awarding users.
 contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransient {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
