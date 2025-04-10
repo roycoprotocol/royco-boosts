@@ -97,9 +97,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Emitted when incentives are claimed.
     /// @param incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param ap The address of the action provider claiming the incentives.
+    /// @param incentivesClaimed The incentives claimed by the action provider.
     /// @param incentiveAmountsPaid Array of net incentive amounts paid to the action provider.
     /// @param protocolFeesPaid Array of protocol fee amounts paid.
-    event IncentivesClaimed(bytes32 indexed incentiveCampaignId, address indexed ap, uint256[] incentiveAmountsPaid, uint256[] protocolFeesPaid);
+    event IncentivesClaimed(
+        bytes32 indexed incentiveCampaignId, address indexed ap, address[] incentivesClaimed, uint256[] incentiveAmountsPaid, uint256[] protocolFeesPaid
+    );
 
     /// @notice Emitted when fees are claimed.
     /// @param claimant The address that claimed the fees.
@@ -363,7 +366,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             _remitIncentivesAndFees(ics, _ap, protocolFeeClaimant, incentives, incentiveAmountsOwed);
 
         // Emit the incentives claimed event.
-        emit IncentivesClaimed(_incentiveCampaignId, _ap, incentiveAmountsPaid, protocolFeesPaid);
+        emit IncentivesClaimed(_incentiveCampaignId, _ap, incentives, incentiveAmountsPaid, protocolFeesPaid);
     }
 
     /// @notice Claims accrued fees for a given incentive token.
