@@ -134,7 +134,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when the specified incentive token does not exist.
     error TokenDoesNotExist();
 
-    /// @notice Thrown when an attempt is made to offer zero incentives.
+    /// @notice Thrown when duplicate incentives are added or removed to/from the campaign.
+    error CannotProcessDuplicateIncentives();
+
+    /// @notice Thrown when an attempt is made to add zero incentive amounts.
     error CannotOfferZeroIncentives();
 
     /// @notice Initializes the IncentiveLocker contract.
@@ -153,7 +156,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
-    /// @param _incentivesOffered Array of incentives.
+    /// @param _incentivesOffered Sorted array of incentives to create the campaign with.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @return incentiveCampaignId The unique identifier for the created incentive campaign.
     function createIncentiveCampaign(
@@ -223,7 +226,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Adds incentives to an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesOffered Array of incentives.
+    /// @param _incentivesOffered Sorted array of incentives to add.
     /// @param _incentiveAmountsOffered Array of amounts offered for each incentive.
     /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
     function addIncentives(
@@ -252,7 +255,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Removes incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of incentives to remove.
+    /// @param _incentivesToRemove Sorted array of incentives to remove.
     /// @param _incentiveAmountsToRemove Array of amounts to remove for each incentive.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
@@ -274,8 +277,14 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
         require(msg.sender == ics.ip, OnlyIP());
 
+        address lastIncentive;
         for (uint256 i = 0; i < numIncentives; ++i) {
             address incentive = _incentivesToRemove[i];
+
+            // Check that the sorted incentive array has no duplicates
+            require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
+            lastIncentive = incentive;
+
             uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
 
             // Update ICS accounting
@@ -314,7 +323,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Removes the maximum amounts of incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of  to remove.
+    /// @param _incentivesToRemove Sorted array of incentives to remove.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
     function maxRemoveIncentives(
@@ -588,10 +597,17 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
-        // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
+
+        address lastIncentive;
+        // Transfer the IP's incentives to the IncentiveLocker and set aside fees
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             // Get the incentive offered and amount
             address incentive = _incentivesOffered[i];
+
+            // Check that the sorted incentive array has no duplicates
+            require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
+            lastIncentive = incentive;
+
             uint256 incentiveAmount = _incentiveAmountsOffered[i];
             // Make sure the amount is non-zero
             require(incentiveAmount > 0, CannotOfferZeroIncentives());
