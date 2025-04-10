@@ -10,7 +10,9 @@ import { PointsRegistry } from "./base/PointsRegistry.sol";
 import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title IncentiveLocker
-/// @notice Manages incentive tokens for markets, handling incentive deposits, fee accounting, and transfers.
+/// @notice A singleton contract responsible for creating incentive campaigns, adding and removing incentives to/from existing campaigns, fee accounting, and
+///         facilitating incentive claims for all Royco V2 campaigns. It interfaces with Action Verifiers to process campaign creations, modifications, and
+///         incentive claims. Additionally, maintains a points program registry which streamlines points program creation, delegation, and awarding users.
 contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransient {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
@@ -97,9 +99,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Emitted when incentives are claimed.
     /// @param incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param ap The address of the action provider claiming the incentives.
+    /// @param incentivesClaimed The incentives claimed by the action provider.
     /// @param incentiveAmountsPaid Array of net incentive amounts paid to the action provider.
     /// @param protocolFeesPaid Array of protocol fee amounts paid.
-    event IncentivesClaimed(bytes32 indexed incentiveCampaignId, address indexed ap, uint256[] incentiveAmountsPaid, uint256[] protocolFeesPaid);
+    event IncentivesClaimed(
+        bytes32 indexed incentiveCampaignId, address indexed ap, address[] incentivesClaimed, uint256[] incentiveAmountsPaid, uint256[] protocolFeesPaid
+    );
 
     /// @notice Emitted when fees are claimed.
     /// @param claimant The address that claimed the fees.
@@ -131,7 +136,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when the specified incentive token does not exist.
     error TokenDoesNotExist();
 
-    /// @notice Thrown when an attempt is made to offer zero incentives.
+    /// @notice Thrown when duplicate incentives are added or removed to/from the campaign.
+    error CannotProcessDuplicateIncentives();
+
+    /// @notice Thrown when an attempt is made to add zero incentive amounts.
     error CannotOfferZeroIncentives();
 
     /// @notice Initializes the IncentiveLocker contract.
@@ -150,7 +158,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Creates an incentive campaign in the incentive locker and returns it's identifier.
     /// @param _actionVerifier Address of the action verifier.
     /// @param _actionParams Arbitrary params describing the action - The action verifier is responsible for parsing this.
-    /// @param _incentivesOffered Array of incentives.
+    /// @param _incentivesOffered Sorted array of incentives to create the campaign with.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @return incentiveCampaignId The unique identifier for the created incentive campaign.
     function createIncentiveCampaign(
@@ -220,7 +228,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Adds incentives to an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesOffered Array of incentives.
+    /// @param _incentivesOffered Sorted array of incentives to add.
     /// @param _incentiveAmountsOffered Array of amounts offered for each incentive.
     /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
     function addIncentives(
@@ -249,7 +257,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Removes incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of incentives to remove.
+    /// @param _incentivesToRemove Sorted array of incentives to remove.
     /// @param _incentiveAmountsToRemove Array of amounts to remove for each incentive.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
@@ -271,8 +279,14 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
         require(msg.sender == ics.ip, OnlyIP());
 
+        address lastIncentive;
         for (uint256 i = 0; i < numIncentives; ++i) {
             address incentive = _incentivesToRemove[i];
+
+            // Check that the sorted incentive array has no duplicates
+            require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
+            lastIncentive = incentive;
+
             uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
 
             // Update ICS accounting
@@ -311,7 +325,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Removes the maximum amounts of incentives from an existing incentive campaign.
     /// @param _incentiveCampaignId The incentive campaign identifier.
-    /// @param _incentivesToRemove Array of  to remove.
+    /// @param _incentivesToRemove Sorted array of incentives to remove.
     /// @param _removalParams Arbitrary (optional) parameters used by the AV on removal.
     /// @param _recipient The address to send the removed incentives to.
     function maxRemoveIncentives(
@@ -363,7 +377,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             _remitIncentivesAndFees(ics, _ap, protocolFeeClaimant, incentives, incentiveAmountsOwed);
 
         // Emit the incentives claimed event.
-        emit IncentivesClaimed(_incentiveCampaignId, _ap, incentiveAmountsPaid, protocolFeesPaid);
+        emit IncentivesClaimed(_incentiveCampaignId, _ap, incentives, incentiveAmountsPaid, protocolFeesPaid);
     }
 
     /// @notice Claims accrued fees for a given incentive token.
@@ -585,10 +599,17 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         uint256 numIncentives = _incentivesOffered.length;
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsOffered.length, ArrayLengthMismatch());
-        // Transfer the IP's incentives to the RecipeMarketHub and set aside fees
+
+        address lastIncentive;
+        // Transfer the IP's incentives to the IncentiveLocker and set aside fees
         for (uint256 i = 0; i < _incentivesOffered.length; ++i) {
             // Get the incentive offered and amount
             address incentive = _incentivesOffered[i];
+
+            // Check that the sorted incentive array has no duplicates
+            require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
+            lastIncentive = incentive;
+
             uint256 incentiveAmount = _incentiveAmountsOffered[i];
             // Make sure the amount is non-zero
             require(incentiveAmount > 0, CannotOfferZeroIncentives());

@@ -166,6 +166,23 @@ contract RoycoTestBase is Test {
                 incentiveAmountsOffered[i] = bound(rand, 1e18, 10_000_000e18);
             }
         }
+
+        // Sort the arrays based on incentivesOffered in ascending order.
+        // This simple selection sort (or bubble sort) swaps both arrays so that the pairing is maintained.
+        for (uint8 i = 0; i < _numIncentivesOffered; i++) {
+            for (uint8 j = i + 1; j < _numIncentivesOffered; j++) {
+                if (uint256(bytes32(bytes20(incentivesOffered[i]))) > uint256(bytes32(bytes20(incentivesOffered[j])))) {
+                    // Swap incentive amounts.
+                    uint256 tempAmount = incentiveAmountsOffered[i];
+                    incentiveAmountsOffered[i] = incentiveAmountsOffered[j];
+                    incentiveAmountsOffered[j] = tempAmount;
+                    // Swap the corresponding incentive tokens.
+                    address tempToken = incentivesOffered[i];
+                    incentivesOffered[i] = incentivesOffered[j];
+                    incentivesOffered[j] = tempToken;
+                }
+            }
+        }
     }
 
     function initWallet(string memory name, uint256 amount) public returns (Vm.Wallet memory) {

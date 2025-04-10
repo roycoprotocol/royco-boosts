@@ -245,7 +245,7 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     function blacklistAsserters(address[] memory _blacklistedAsserters) public virtual onlyOwner {
         uint256 numAsserters = _blacklistedAsserters.length;
         for (uint256 i = 0; i < numAsserters; ++i) {
-            asserterToIsWhitelisted[_blacklistedAsserters[i]] = true;
+            asserterToIsWhitelisted[_blacklistedAsserters[i]] = false;
         }
         emit AssertersBlacklisted(_blacklistedAsserters);
     }
