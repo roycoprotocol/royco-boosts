@@ -13,10 +13,10 @@ address constant DEFAULT_PROTOCOL_FEE_CLAIMAINT = 0x77777Cc68b333a2256B436D675E8
 uint64 constant DEFAULT_PROTOCOL_FEE = 0.04e18;
 
 // Deployment salts
-string constant INCENTIVE_LOCKER_SALT = "ROYCO_INCENTIVE_LOCKER_1716b7157475c9127a4f4f8f454a6d40f5be47f3";
+string constant INCENTIVE_LOCKER_SALT = "ROYCO_INCENTIVE_LOCKER_50499e70e4955f54ed72746bdafdcf06b050f6d1";
 
 // Expected deployment addresses after simulating deployment
-address constant EXPECTED_INCENTIVE_LOCKER_ADDRESS = 0xECb5b2d665e9Ed516AAbc000aCb331b89Dc73c33;
+address constant EXPECTED_INCENTIVE_LOCKER_ADDRESS = 0x2bB6F292536CF874274CEca4f1663254636E15CE;
 
 contract DeployIncentiveLocker is Script {
     error Create2DeployerNotDeployed();
