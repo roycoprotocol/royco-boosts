@@ -82,6 +82,7 @@ contract MultiplierMarketHub {
     /// @dev Callable by APs.
     /// @param _incentiveCampaignId Incentive campaign identifier.
     function optIn(bytes32 _incentiveCampaignId) external incentiveCampaignChecks(_incentiveCampaignId, false) {
+        // Make sure that the same AP cannot opt in more than once
         require(!incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender], AlreadyOptedIn());
         incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender] = true;
 
@@ -105,6 +106,12 @@ contract MultiplierMarketHub {
     {
         // Ensure that multiplier doesn't exceed the maximum
         require(_multiplier <= MAX_MULTIPLIER, MaxMultiplierExceeded());
+
+        // If the AP is not opted in yet, opt them in so they can start earning incentives
+        if (!incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender]) {
+            incentiveCampaignIdToApToOptedIn[_incentiveCampaignId][msg.sender] = true;
+            emit OptedInToIncentiveCampaign(_incentiveCampaignId, msg.sender);
+        }
 
         // Compute the AP offer hash using an incremental counter and provided parameters.
         apOfferHash = keccak256(abi.encode(++numApOffers, _incentiveCampaignId, _multiplier, _size));
