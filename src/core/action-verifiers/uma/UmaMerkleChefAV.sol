@@ -390,18 +390,18 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
             "Action Verifier: 0x",
             AncillaryData.toUtf8BytesAddress(address(this)),
             "\n",
+            "Asserted By: ",
+            AncillaryData.toUtf8BytesAddress(msg.sender),
+            "\n",
+            "Assertion Timestamp: ",
+            AncillaryData.toUtf8BytesUint(block.timestamp),
+            "\n",
             "AVM Implementation: https://github.com/roycoprotocol/royco-avm \n",
             "AVM Version: ",
             avmVersion,
             "\n",
             "AVM Params: ",
-            avmParamsStr,
-            "\n",
-            "Asserted By: ",
-            AncillaryData.toUtf8BytesAddress(msg.sender),
-            "\n",
-            "Assertion Timestamp: ",
-            AncillaryData.toUtf8BytesUint(block.timestamp)
+            avmParamsStr
         );
     }
 
