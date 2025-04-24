@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "../utils/RoycoTestBase.sol";
-import { FixedPointMathLib } from "../../../lib/solmate/src/utils/FixedPointMathLib.sol";
+import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
     function setUp() external {
@@ -42,9 +42,9 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), abi.encode(block.timestamp, block.timestamp + 60 days, bytes32(0)), incentivesOffered, incentiveAmountsOffered
-        );
+        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId =
+            incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
         address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];
@@ -83,9 +83,9 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), abi.encode(block.timestamp, block.timestamp + 60 days, bytes32(0)), incentivesOffered, incentiveAmountsOffered
-        );
+        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId =
+            incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
         address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];
@@ -125,9 +125,9 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), abi.encode(block.timestamp, block.timestamp + 60 days, bytes32(0)), incentivesOffered, incentiveAmountsOffered
-        );
+        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId =
+            incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
         address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];

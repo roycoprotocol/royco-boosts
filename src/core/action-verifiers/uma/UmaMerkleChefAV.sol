@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
-import { UmaMerkleOracleBase } from "./base/UmaMerkleOracleBase.sol";
+import { UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
 import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
@@ -30,11 +30,15 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @notice Action parameters for this action verifier.
     /// @custom:field startTimestamp The timestamp to start streaming incentives for this campaign.
     /// @custom:field endTimestamp The timestamp to stop streaming incentives for this campaign.
-    /// @custom:field ipfsCID The link to the ipfs doc which store an action description and more info
+    /// @custom:field avmVersion The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
+    ///               The AVM uses semantic versioning (SemVer).
+    /// @custom:field avmParams Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
+    ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
     struct ActionParams {
         uint32 startTimestamp;
         uint32 endTimestamp;
-        bytes32 ipfsCID;
+        string avmVersion;
+        bytes avmParams;
     }
 
     /// @notice Parameters used for user claims.
@@ -129,9 +133,8 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         override
         onlyIncentiveLocker
     {
-        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
-        uint32 startTimestamp = params.startTimestamp;
-        uint32 endTimestamp = params.endTimestamp;
+        // Decode the action params and extract the campaign duration
+        (uint32 startTimestamp, uint32 endTimestamp,,) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
 
         // Check that the duration is valid
         require(endTimestamp > startTimestamp, InvalidCampaignDuration());
@@ -353,6 +356,54 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @dev Called by `assertionDisputedCallback` in the parent UmaMerkleOracleBase contract.
     /// @param _merkleRootAssertion The MerkleRootAssertion data that was verified as true.
     function _processAssertionDispute(MerkleRootAssertion storage _merkleRootAssertion) internal override { }
+
+    /// @notice Generates the claim data to be sent to UMA's Optimistic Oracle.
+    /// @dev Encodes the Merkle root, incentive campaign ID, action parameters, caller address, and timestamp into a single bytes string.
+    /// @param _merkleRoot The asserted Merkle root.
+    /// @param _incentiveCampaignId The identifier for the incentive campaign.
+    /// @param _actionParams The action parameters for this claim.
+    /// @return claim The generated claim as an encoded bytes string.
+    function _generateUmaClaim(
+        bytes32 _merkleRoot,
+        bytes32 _incentiveCampaignId,
+        bytes memory _actionParams
+    )
+        internal
+        view
+        override
+        returns (bytes memory claim)
+    {
+        // Decode the action params and extract the avmVersion and avmParams
+        (,, string memory avmVersion, bytes memory avmParams) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
+
+        // Cast the AVM params to a string for readability
+        string memory avmParamsStr = string(avmParams);
+
+        // Marshal the UMA claim for this assertion
+        claim = abi.encodePacked(
+            "Merkle Root Asserted: 0x",
+            AncillaryData.toUtf8Bytes(_merkleRoot),
+            "\n",
+            "Incentive Campaign ID: 0x",
+            AncillaryData.toUtf8Bytes(_incentiveCampaignId),
+            "\n",
+            "Action Verifier: 0x",
+            AncillaryData.toUtf8BytesAddress(address(this)),
+            "\n",
+            "Asserted By: ",
+            AncillaryData.toUtf8BytesAddress(msg.sender),
+            "\n",
+            "Assertion Timestamp: ",
+            AncillaryData.toUtf8BytesUint(block.timestamp),
+            "\n",
+            "AVM Implementation: https://github.com/roycoprotocol/royco-avm \n",
+            "AVM Version: ",
+            avmVersion,
+            "\n",
+            "AVM Params: ",
+            avmParamsStr
+        );
+    }
 
     /// @notice Returns the start and end timestamps for a given incentive campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.

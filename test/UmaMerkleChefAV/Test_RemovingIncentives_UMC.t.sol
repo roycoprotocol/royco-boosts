@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "../utils/RoycoTestBase.sol";
-import { FixedPointMathLib } from "../../../lib/solmate/src/utils/FixedPointMathLib.sol";
+import { FixedPointMathLib } from "../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 contract Test_RemovingIncentives_UMC is RoycoTestBase {
     function setUp() external {
@@ -25,7 +25,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.
@@ -102,7 +102,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.
@@ -142,7 +142,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
 
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.

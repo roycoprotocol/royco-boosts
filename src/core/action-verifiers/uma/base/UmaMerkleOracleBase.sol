@@ -272,7 +272,16 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     /// @param _incentiveCampaignId The identifier for the incentive campaign.
     /// @param _actionParams The action parameters for this claim.
     /// @return claim The generated claim as an encoded bytes string.
-    function _generateUmaClaim(bytes32 _merkleRoot, bytes32 _incentiveCampaignId, bytes memory _actionParams) internal virtual returns (bytes memory claim) {
+    function _generateUmaClaim(
+        bytes32 _merkleRoot,
+        bytes32 _incentiveCampaignId,
+        bytes memory _actionParams
+    )
+        internal
+        view
+        virtual
+        returns (bytes memory claim)
+    {
         claim = abi.encodePacked(
             "Merkle Root asserted: 0x",
             AncillaryData.toUtf8Bytes(_merkleRoot),
