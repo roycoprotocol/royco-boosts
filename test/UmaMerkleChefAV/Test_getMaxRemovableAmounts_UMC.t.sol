@@ -24,17 +24,12 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), 
-            actionParams, 
-            initialIncentives, 
-            initialAmounts
-        );
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Compute a query timestamp based on the fuzzed skip percentage
         uint32 queryTimestamp = campaignStart + (_campaignLength * _skipPercentage) / 100;
-        
+
         // Warp to the query timestamp
         vm.warp(queryTimestamp);
 
@@ -42,16 +37,13 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint256[] memory expectedUnspentAmounts = new uint256[](_numIncentives);
         uint256 remainingCampaignDuration = campaignEnd - queryTimestamp;
         for (uint256 i = 0; i < _numIncentives; i++) {
-            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-                incentiveCampaignId, 
-                initialIncentives[i]
-            );
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, initialIncentives[i]);
             expectedUnspentAmounts[i] = currentRate.mulWadDown(remainingCampaignDuration);
         }
 
         // Call getMaxRemovableIncentiveAmounts and verify results
         uint256[] memory unspentAmounts = umaMerkleChefAV.getMaxRemovableIncentiveAmounts(incentiveCampaignId, initialIncentives);
-        
+
         // Verify the results
         for (uint256 i = 0; i < _numIncentives; i++) {
             assertApproxEqRel(unspentAmounts[i], expectedUnspentAmounts[i], 0.001e18);
@@ -71,27 +63,19 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), 
-            actionParams, 
-            initialIncentives, 
-            initialAmounts
-        );
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Calculate expected unspent amounts - for unstarted campaign, should be the full initial rates * campaign length
         uint256[] memory expectedUnspentAmounts = new uint256[](_numIncentives);
         for (uint256 i = 0; i < _numIncentives; i++) {
-            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-                incentiveCampaignId, 
-                initialIncentives[i]
-            );
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, initialIncentives[i]);
             expectedUnspentAmounts[i] = currentRate.mulWadDown(_campaignLength);
         }
 
         // Call getMaxRemovableIncentiveAmounts and verify results
         uint256[] memory unspentAmounts = umaMerkleChefAV.getMaxRemovableIncentiveAmounts(incentiveCampaignId, initialIncentives);
-        
+
         // Verify the results
         for (uint256 i = 0; i < _numIncentives; i++) {
             assertApproxEqRel(unspentAmounts[i], expectedUnspentAmounts[i], 0.001e18);
@@ -111,13 +95,8 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), 
-            actionParams, 
-            initialIncentives, 
-            initialAmounts
-        );
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Warp to near the end of the campaign based on remaining percentage
         uint32 nearEndTimestamp = campaignEnd - (_campaignLength * _remainingPercentage) / 100;
@@ -127,16 +106,13 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint256[] memory expectedUnspentAmounts = new uint256[](_numIncentives);
         uint256 remainingCampaignDuration = campaignEnd - nearEndTimestamp;
         for (uint256 i = 0; i < _numIncentives; i++) {
-            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-                incentiveCampaignId, 
-                initialIncentives[i]
-            );
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, initialIncentives[i]);
             expectedUnspentAmounts[i] = currentRate.mulWadDown(remainingCampaignDuration);
         }
 
         // Call getMaxRemovableIncentiveAmounts and verify results
         uint256[] memory unspentAmounts = umaMerkleChefAV.getMaxRemovableIncentiveAmounts(incentiveCampaignId, initialIncentives);
-        
+
         // Verify the results - should be very small amounts
         for (uint256 i = 0; i < _numIncentives; i++) {
             assertApproxEqRel(unspentAmounts[i], expectedUnspentAmounts[i], 0.001e18);
@@ -158,13 +134,8 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), 
-            actionParams, 
-            initialIncentives, 
-            initialAmounts
-        );
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Select a subset of incentives to query (half of them)
         uint256 numToQuery = _numIncentives / 2;
@@ -175,7 +146,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
 
         // Compute a query timestamp based on the fuzzed skip percentage
         uint32 queryTimestamp = campaignStart + (_campaignLength * _skipPercentage) / 100;
-        
+
         // Warp to the query timestamp
         vm.warp(queryTimestamp);
 
@@ -183,16 +154,13 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint256[] memory expectedUnspentAmounts = new uint256[](numToQuery);
         uint256 remainingCampaignDuration = campaignEnd - queryTimestamp;
         for (uint256 i = 0; i < numToQuery; i++) {
-            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-                incentiveCampaignId, 
-                queryIncentives[i]
-            );
+            uint256 currentRate = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, queryIncentives[i]);
             expectedUnspentAmounts[i] = currentRate.mulWadDown(remainingCampaignDuration);
         }
 
         // Call getMaxRemovableIncentiveAmounts and verify results
         uint256[] memory unspentAmounts = umaMerkleChefAV.getMaxRemovableIncentiveAmounts(incentiveCampaignId, queryIncentives);
-        
+
         // Verify the results match for the queried subset
         assertEq(unspentAmounts.length, numToQuery);
         for (uint256 i = 0; i < numToQuery; i++) {
@@ -200,7 +168,14 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         }
     }
 
-    function test_getMaxRemovableIncentiveAmounts_AfterPartialRemoval(uint8 _numIncentives, uint32 _campaignLength, uint8 _removalPercentage, uint8 _queryPercentage) public {
+    function test_getMaxRemovableIncentiveAmounts_AfterPartialRemoval(
+        uint8 _numIncentives,
+        uint32 _campaignLength,
+        uint8 _removalPercentage,
+        uint8 _queryPercentage
+    )
+        public
+    {
         _numIncentives = uint8(bound(_numIncentives, 1, 10));
         _campaignLength = uint32(bound(_campaignLength, 7 days, 365 days));
         _removalPercentage = uint8(bound(_removalPercentage, 1, 40)); // Do removal in first 40% of campaign
@@ -214,13 +189,8 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, bytes32(0));
-        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(
-            address(umaMerkleChefAV), 
-            actionParams, 
-            initialIncentives, 
-            initialAmounts
-        );
+        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Compute timestamps for removal and query based on fuzzed percentages
         uint32 removalTimestamp = campaignStart + (_campaignLength * _removalPercentage) / 100;
@@ -230,27 +200,18 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         address[] memory removalIncentives = new address[](1);
         uint256[] memory removalAmounts = new uint256[](1);
         removalIncentives[0] = initialIncentives[0];
-        
+
         // Calculate maximum removable amount for first incentive at removal time
         vm.warp(removalTimestamp);
         uint256 remainingCampaignDurationAtRemoval = campaignEnd - removalTimestamp;
-        uint256 currentRateAtRemoval = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-            incentiveCampaignId, 
-            removalIncentives[0]
-        );
+        uint256 currentRateAtRemoval = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, removalIncentives[0]);
         uint256 maxRemovableAmount = currentRateAtRemoval.mulWadDown(remainingCampaignDurationAtRemoval);
-        
+
         // Remove half of the maximum removable amount
         removalAmounts[0] = maxRemovableAmount / 2;
-        
+
         // Execute the partial removal
-        incentiveLocker.removeIncentives(
-            incentiveCampaignId,
-            removalIncentives,
-            removalAmounts,
-            new bytes(0),
-            address(this)
-        );
+        incentiveLocker.removeIncentives(incentiveCampaignId, removalIncentives, removalAmounts, new bytes(0), address(this));
 
         // Warp to query timestamp
         vm.warp(queryTimestamp);
@@ -258,26 +219,23 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         // Calculate expected unspent amounts after the partial removal
         uint256[] memory expectedUnspentAmounts = new uint256[](_numIncentives);
         uint256 remainingCampaignDurationAtQuery = campaignEnd - queryTimestamp;
-        
+
         for (uint256 i = 0; i < _numIncentives; i++) {
-            uint256 currentRateAtQuery = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(
-                incentiveCampaignId, 
-                initialIncentives[i]
-            );
+            uint256 currentRateAtQuery = umaMerkleChefAV.incentiveCampaignIdToIncentiveToCurrentRate(incentiveCampaignId, initialIncentives[i]);
             expectedUnspentAmounts[i] = currentRateAtQuery.mulWadDown(remainingCampaignDurationAtQuery);
         }
 
         // Call getMaxRemovableIncentiveAmounts and verify results
         uint256[] memory unspentAmounts = umaMerkleChefAV.getMaxRemovableIncentiveAmounts(incentiveCampaignId, initialIncentives);
-        
+
         // Verify the results
         for (uint256 i = 0; i < _numIncentives; i++) {
             assertApproxEqRel(unspentAmounts[i], expectedUnspentAmounts[i], 0.001e18);
         }
-        
+
         // The first incentive should have a lower unspent amount than expected without removal
         uint256 expectedRemainingPercentage = 100 - _queryPercentage;
         uint256 expectedFirstIncentiveWithoutRemoval = (initialAmounts[0] * expectedRemainingPercentage) / 100;
         assertLt(unspentAmounts[0], expectedFirstIncentiveWithoutRemoval);
     }
-} 
+}
