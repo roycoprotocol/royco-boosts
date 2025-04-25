@@ -72,9 +72,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param updatedRates The new incentive streaming rates for each corresponding token.
     event EmissionRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
-    /// @notice Error thrown when a function is called by an address other than the IncentiveLocker.
-    error OnlyIncentiveLocker();
-
     /// @notice Error thrown when the campaign's end timestamp is not greater than the start timestamp.
     error InvalidCampaignDuration();
 
@@ -92,12 +89,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Error thrown when an attempt is made to remove more incentives than are available.
     error RemovalLimitExceeded();
-
-    /// @dev Modifier restricting the caller to the IncentiveLocker.
-    modifier onlyIncentiveLocker() {
-        require(msg.sender == address(incentiveLocker), OnlyIncentiveLocker());
-        _;
-    }
 
     /// @notice Constructs the UmaMerkleChefAV.
     /// @param _owner The initial owner of the contract.
