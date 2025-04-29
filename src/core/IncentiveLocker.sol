@@ -290,11 +290,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
             lastIncentive = incentive;
 
-            uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
-            require(incentiveAmountRemoved > 0, CannotRemoveZeroIncentives(incentive));
-
             // Update ICS accounting
             // If removing more than is left, assume they want to remove the rest since this tx might have been frontrun by a claim.
+            uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
             if (incentiveAmountRemoved >= ics.incentiveToAmountRemaining[incentive]) {
                 // Get the max amount they can remove
                 incentiveAmountRemoved = ics.incentiveToAmountRemaining[incentive];
@@ -305,6 +303,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
                 // Account for the refund
                 ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
             }
+
+            // Check that the incentive amount to remove is non-zero
+            require(incentiveAmountRemoved > 0, CannotRemoveZeroIncentives(incentive));
 
             ics.incentiveToAmountOffered[incentive] -= incentiveAmountRemoved;
             if (ics.incentiveToAmountOffered[incentive] == 0) {
