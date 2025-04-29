@@ -140,7 +140,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     error CannotProcessDuplicateIncentives();
 
     /// @notice Thrown when an attempt is made to add zero incentive amounts.
-    error CannotOfferZeroIncentives();
+    error CannotOfferZeroIncentives(address incentive);
+
+    /// @notice Thrown when an attempt is made to remove zero incentive amounts.
+    error CannotRemoveZeroIncentives(address incentive);
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -288,6 +291,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             lastIncentive = incentive;
 
             uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
+            require(incentiveAmountRemoved > 0, CannotRemoveZeroIncentives(incentive));
 
             // Update ICS accounting
             // If removing more than is left, assume they want to remove the rest since this tx might have been frontrun by a claim.
@@ -612,7 +616,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
             uint256 incentiveAmount = _incentiveAmountsOffered[i];
             // Make sure the amount is non-zero
-            require(incentiveAmount > 0, CannotOfferZeroIncentives());
+            require(incentiveAmount > 0, CannotOfferZeroIncentives(incentive));
 
             // Check if incentive is a points program
             if (isPointsProgram(incentive)) {
