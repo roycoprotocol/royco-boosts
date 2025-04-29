@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
 import { UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
 import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
@@ -14,7 +13,7 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 ///         Each merkle root posted for a campaign should be composed of leaves containing incentive amounts >= the previous root.
 ///         This contract extends UmaMerkleOracleBase to assert, resolve, and dispute Merkle roots posted by the oracle.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
-contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
+contract UmaMerkleChefAV is UmaMerkleOracleBase {
     using FixedPointMathLib for uint256;
 
     /// @notice An enum representing different modifications that can be made to incentive streams for a campaign.
@@ -250,6 +249,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     )
         external
         view
+        override
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     {
         // Get the start and end timestamps for the campaign

@@ -97,7 +97,9 @@ interface OptimisticOracleV3Interface {
         uint256 bond,
         bytes32 identifier,
         bytes32 domainId
-    ) external returns (bytes32);
+    )
+        external
+        returns (bytes32);
 
     /**
      * @notice Fetches information about a specific identifier & currency from the UMA contracts and stores a local copy
@@ -157,13 +159,7 @@ interface OptimisticOracleV3Interface {
 
     event AssertionDisputed(bytes32 indexed assertionId, address indexed caller, address indexed disputer);
 
-    event AssertionSettled(
-        bytes32 indexed assertionId,
-        address indexed bondRecipient,
-        bool disputed,
-        bool settlementResolution,
-        address settleCaller
-    );
+    event AssertionSettled(bytes32 indexed assertionId, address indexed bondRecipient, bool disputed, bool settlementResolution, address settleCaller);
 
     event AdminPropertiesSet(IERC20 defaultCurrency, uint64 defaultLiveness, uint256 burnedBondPercentage);
 }

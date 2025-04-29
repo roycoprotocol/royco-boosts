@@ -54,8 +54,7 @@ library AncillaryData {
      * @return utf8 encoded address bytes.
      */
     function toUtf8BytesAddress(address x) internal pure returns (bytes memory) {
-        return
-            abi.encodePacked(toUtf8Bytes32Bottom(bytes32(bytes20(x)) >> 128), bytes8(toUtf8Bytes32Bottom(bytes20(x))));
+        return abi.encodePacked(toUtf8Bytes32Bottom(bytes32(bytes20(x)) >> 128), bytes8(toUtf8Bytes32Bottom(bytes20(x))));
     }
 
     /**
@@ -84,11 +83,7 @@ library AncillaryData {
         return bstr;
     }
 
-    function appendKeyValueBytes32(bytes memory currentAncillaryData, bytes memory key, bytes32 value)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function appendKeyValueBytes32(bytes memory currentAncillaryData, bytes memory key, bytes32 value) internal pure returns (bytes memory) {
         bytes memory prefix = constructPrefix(currentAncillaryData, key);
         return abi.encodePacked(currentAncillaryData, prefix, toUtf8Bytes(value));
     }
@@ -102,11 +97,7 @@ library AncillaryData {
      * @param value An address to set as the value in the key:value pair to append to `currentAncillaryData`.
      * @return Newly appended ancillary data.
      */
-    function appendKeyValueAddress(bytes memory currentAncillaryData, bytes memory key, address value)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function appendKeyValueAddress(bytes memory currentAncillaryData, bytes memory key, address value) internal pure returns (bytes memory) {
         bytes memory prefix = constructPrefix(currentAncillaryData, key);
         return abi.encodePacked(currentAncillaryData, prefix, toUtf8BytesAddress(value));
     }
@@ -120,11 +111,7 @@ library AncillaryData {
      * @param value A uint to set as the value in the key:value pair to append to `currentAncillaryData`.
      * @return Newly appended ancillary data.
      */
-    function appendKeyValueUint(bytes memory currentAncillaryData, bytes memory key, uint256 value)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function appendKeyValueUint(bytes memory currentAncillaryData, bytes memory key, uint256 value) internal pure returns (bytes memory) {
         bytes memory prefix = constructPrefix(currentAncillaryData, key);
         return abi.encodePacked(currentAncillaryData, prefix, toUtf8BytesUint(value));
     }
@@ -134,11 +121,7 @@ library AncillaryData {
      * comma "," if the `currentAncillaryData` is not empty. The return value is intended to be prepended as a prefix to
      * some utf8 value that is ultimately added to a comma-delimited, key-value dictionary.
      */
-    function constructPrefix(bytes memory currentAncillaryData, bytes memory key)
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function constructPrefix(bytes memory currentAncillaryData, bytes memory key) internal pure returns (bytes memory) {
         if (currentAncillaryData.length > 0) {
             return abi.encodePacked(",", key, ":");
         } else {
