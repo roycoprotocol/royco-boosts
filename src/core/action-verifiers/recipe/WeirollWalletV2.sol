@@ -2,13 +2,32 @@
 pragma solidity ^0.8.0;
 
 import { VM } from "../../../../lib/enso-weiroll/contracts/VM.sol";
+import { Clones } from "../../../../lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
 /// @title WeirollWalletV2
 /// @notice WeirollWalletV2 implementation contract.
 /// @notice Implements a simple smart contract wallet that can execute Weiroll VM commands
+
 contract WeirollWalletV2 is VM {
+    using Clones for address;
+
     /// @notice Arbitrary bytes params used when executing a recipe through the Weiroll VM.
     bytes public executionParams;
+
+    function getRecipeChef() public view returns (address recipeChef) {
+        bytes memory immutableArgs = address(this).fetchCloneArgs();
+        assembly ("memory-safe") {
+            // Load the first word of the imm
+            recipeChef := shr(96, mload(add(immutableArgs, 32)))
+        }
+    }
+
+    error OnlyRecipeChef();
+
+    modifier onlyRecipeChef() {
+        require(msg.sender == getRecipeChef(), OnlyRecipeChef());
+        _;
+    }
 
     /// @notice Execute the Weiroll VM with the given commands.
     /// @param _commands The commands to be executed by the Weiroll VM.
@@ -22,6 +41,7 @@ contract WeirollWalletV2 is VM {
     )
         public
         payable
+        onlyRecipeChef
         returns (uint256 quantity)
     {
         // Set the execution params in storage for the recipe to read.

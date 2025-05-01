@@ -2,23 +2,17 @@
 pragma solidity ^0.8.0;
 
 import { ActionVerifierBase } from "../base/ActionVerifierBase.sol";
+import { RoycoPositionManager } from "./RoycoPositionManager.sol";
+import { WeirollWalletV2 } from "./WeirollWalletV2.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
+import { Clones } from "../../../../lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 
-contract RecipeChef is ActionVerifierBase {
+contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     using FixedPointMathLib for uint256;
+    using Clones for address;
 
     /// @notice The address of the WeirollWallet implementation contract
     address public immutable WEIROLL_WALLET_V2_IMPLEMENTATION;
-
-    /// @notice An enum representing different modifications that can be made to incentive streams for a campaign.
-    /// @custom:field INIT_STREAMS Initializes the incentives streams for a campaign and sets its initial emission rate.
-    /// @custom:field EXTEND_STREAM_DURATION Add incentives to a stream, increasing its rate from now until the end timestamp.
-    /// @custom:field DECREASE_RATE Removes incentives from a stream, decreasing its rate from now until the end timestamp.
-    enum Modifications {
-        INIT_STREAMS,
-        EXTEND_STREAM_DURATION,
-        SHORTEN_STREAM_DURATION
-    }
 
     /// @custom:field weirollCommands The weiroll script that will be executed.
     /// @custom:field weirollState State of the weiroll VM used by the weirollCommands.
@@ -33,23 +27,24 @@ contract RecipeChef is ActionVerifierBase {
         uint192 rate;
     }
 
-    struct IncentivesOwed {
-        uint224 accumulated;
-        uint32 checkpoint;
-    }
-
-    struct Campaign {
+    struct IAM {
         Recipe depositRecipe;
         Recipe withdrawRecipe;
+        uint256 totalQuantityDeposited;
         mapping(address incentive => StreamState state) incentiveToStreamState;
-        mapping(address ap => address weirollWallet) apToWeirollWallet;
-        mapping(address ap => mapping(address incentive => IncentivesOwed owed)) apToIncentiveToAmountOwed;
     }
 
-    mapping(bytes32 id => Campaign campaign) incentiveCampaignIdToCampaign;
+    mapping(bytes32 id => IAM market) incentiveCampaignIdToIAM;
+
+    mapping(address ap => uint256 nonce) apToWeirollWalletNonce;
+
+    event IAMCreated(
+        bytes32 incentiveCampaignId, uint32 startTimestamp, uint32 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint192[] rates
+    );
 
     error InvalidCampaignDuration();
     error EmissionRateMustBeNonZero();
+    error QuantityDepostedMustBeNonZero();
 
     constructor(address _incentiveLocker, address _weirollWalletV2Implementation) ActionVerifierBase(_incentiveLocker) {
         WEIROLL_WALLET_V2_IMPLEMENTATION = _weirollWalletV2Implementation;
@@ -60,36 +55,61 @@ contract RecipeChef is ActionVerifierBase {
     /// @param _incentivesOffered Array of incentives.
     /// @param _incentiveAmountsOffered Array of total amounts paid for each incentive (including fees).
     /// @param _actionParams Arbitrary parameters defining the action.
-    /// @param _ip The address placing the incentives for this campaign.
     function processIncentiveCampaignCreation(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered,
         bytes memory _actionParams,
-        address _ip
+        address /*_ip*/
     )
         external
         override
         onlyIncentiveLocker
     {
-        // Decode the action params to get the initial campaign duration and recipes
+        // Decode the action params to get the initial market duration and recipes
         (uint32 startTimestamp, uint32 endTimestamp, Recipe memory depositRecipe, Recipe memory withdrawRecipe) =
             abi.decode(_actionParams, (uint32, uint32, Recipe, Recipe));
 
         // Check that the duration is valid
         require(startTimestamp > block.timestamp && endTimestamp > startTimestamp, InvalidCampaignDuration());
 
-        // Set the campaign deposit recipes
-        Campaign storage campaign = incentiveCampaignIdToCampaign[_incentiveCampaignId];
-        campaign.depositRecipe = depositRecipe;
-        campaign.withdrawRecipe = withdrawRecipe;
+        // Set the market's deposit recipes
+        IAM storage market = incentiveCampaignIdToIAM[_incentiveCampaignId];
+        market.depositRecipe = depositRecipe;
+        market.withdrawRecipe = withdrawRecipe;
 
         // Initialize the incentive stream states
-        uint192[] memory rates = _initializeIncentiveStreams(campaign, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+        uint192[] memory rates = _initializeIncentiveStreams(market, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+
+        // Emit an event to signal market creation
+        emit IAMCreated(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
     }
 
-    function optIntoIncentiveCampaign(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external {
-        Campaign storage campaign = incentiveCampaignIdToCampaign[_incentiveCampaignId];
+    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external returns (uint256 tokenId, address payable weirollWallet) {
+        // Get the market from storage
+        IAM storage market = incentiveCampaignIdToIAM[_incentiveCampaignId];
+
+        // Mints an NFT representing the AP's Royco position
+        _safeMint(msg.sender, (tokenId = tokenId++));
+
+        // Deploy a fresh Weiroll Wallet which can be controlled by the AP's Royco Position NFT
+        weirollWallet = payable(
+            WEIROLL_WALLET_V2_IMPLEMENTATION.cloneDeterministicWithImmutableArgs(
+                abi.encodePacked(address(this)), computeNextWeirollWalletDeploymentSalt(msg.sender, apToWeirollWalletNonce[msg.sender]++)
+            )
+        );
+
+        // Execute the Weiroll Recipe through the fresh Weiroll Wallet
+        // The quantity returned will be used to calculate the user's share of rewards in the stream
+        uint256 quantity =
+            WeirollWalletV2(weirollWallet).executeWeirollRecipe(market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams);
+
+        // Check that something was deposited
+        require(quantity > 0, QuantityDepostedMustBeNonZero());
+    }
+
+    function computeNextWeirollWalletDeploymentSalt(address _ap, uint256 _nonce) public pure returns (bytes32 salt) {
+        salt = keccak256(abi.encodePacked(_ap, _nonce));
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -159,15 +179,14 @@ contract RecipeChef is ActionVerifierBase {
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     { }
 
-    /// @notice Initializes the incentive streams for a campaign
-    /// @dev Initial
-    /// @param _campaign The unique identifier for the incentive campaign.
+    /// @notice Initializes the incentive streams for a IAM.
+    /// @param _iam A storage pointer to the IAM.
     /// @param _startTimestamp The start timestamp for the incentive campaign.
     /// @param _endTimestamp The end timestamp for the incentive campaign.
     /// @param _incentives The array of incentives.
     /// @param _incentiveAmounts The corresponding amounts for each incentive.
     function _initializeIncentiveStreams(
-        Campaign storage _campaign,
+        IAM storage _iam,
         uint32 _startTimestamp,
         uint32 _endTimestamp,
         address[] memory _incentives,
@@ -180,11 +199,13 @@ contract RecipeChef is ActionVerifierBase {
         uint256 numIncentives = _incentives.length;
         rates = new uint192[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
-            // Calculate the intial emission rate for this incentive and check that it is nonzero
+            // Calculate the intial emission rate for this incentive scaled up by WAD
             rates[i] = uint192((_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp));
+            // Check that the rate is non-zero
             require(rates[i] > 0, EmissionRateMustBeNonZero());
+
             // Update the stream state to reflect the rate
-            StreamState storage stream = _campaign.incentiveToStreamState[_incentives[i]];
+            StreamState storage stream = _iam.incentiveToStreamState[_incentives[i]];
             stream.startTimestamp = _startTimestamp;
             stream.endTimestamp = _endTimestamp;
             stream.rate = rates[i];
