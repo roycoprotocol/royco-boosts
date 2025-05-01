@@ -17,12 +17,12 @@ contract RoycoPositionManager is ERC721 {
         address owner;
         address weirollWallet;
         uint32 checkpoint;
-        uint256 quantity;
+        uint256 liquidity;
         mapping(address incentive => uint256 amountOwed) incentiveToAmountOwed;
     }
 
     /// @dev NFT Token ID to the RoycoPosition data
-    mapping(uint256 tokenId => RoycoPosition position) public tokenIdToPosition;
+    mapping(uint256 positionId => RoycoPosition position) public positionIdToPosition;
 
     constructor() ERC721("Royco V2 Weiroll Positions", "ROY-V2-POS") { }
 }

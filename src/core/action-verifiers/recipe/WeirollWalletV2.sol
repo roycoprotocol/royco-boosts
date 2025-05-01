@@ -17,8 +17,18 @@ contract WeirollWalletV2 is VM {
     function getRecipeChef() public view returns (address recipeChef) {
         bytes memory immutableArgs = address(this).fetchCloneArgs();
         assembly ("memory-safe") {
-            // Load the first word of the imm
+            // Load the first word of the immutable args
+            // Shift right by 96 bits to place the upper 20 bytes in the lower 20 bytes for a clean cast
             recipeChef := shr(96, mload(add(immutableArgs, 32)))
+        }
+    }
+
+    function getPositionId() public view returns (uint256 positionId) {
+        bytes memory immutableArgs = address(this).fetchCloneArgs();
+        assembly ("memory-safe") {
+            // Load the positionId as the word after the recipeChef address
+            // Offset = 32 bytes (length field) + 20 bytes (RecipeChef address)
+            positionId := mload(add(immutableArgs, 52))
         }
     }
 
@@ -42,17 +52,17 @@ contract WeirollWalletV2 is VM {
         public
         payable
         onlyRecipeChef
-        returns (uint256 quantity)
+        returns (uint256 liquidity)
     {
         // Set the execution params in storage for the recipe to read.
         executionParams = _executionParams;
 
         // Execute the Weiroll Recipe in the VM.
         bytes[] memory returnData = _execute(_commands, _state);
-        // The last element of the resulting state array should hold the quantity deposited/withdrawn.
-        quantity = uint256(bytes32(returnData[returnData.length - 1]));
+        // The last element of the resulting state array should hold the liquidity deposited/withdrawn.
+        liquidity = uint256(bytes32(returnData[returnData.length - 1]));
 
-        // Delete the execution params for gas savings.
+        // Delete the execution params for a gas refund.
         delete executionParams;
     }
 

@@ -14,6 +14,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     /// @notice The address of the WeirollWallet implementation contract
     address public immutable WEIROLL_WALLET_V2_IMPLEMENTATION;
 
+    /// @notice Recipe - A struct holding Weiroll commands and state to be executed by the weiroll VM.
     /// @custom:field weirollCommands The weiroll script that will be executed.
     /// @custom:field weirollState State of the weiroll VM used by the weirollCommands.
     struct Recipe {
@@ -21,22 +22,31 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         bytes[] weirollState;
     }
 
+    /// @notice StreamState - The state of incentive stream for a RecipeChef market
+    /// @custom:field startTimestamp - The timestamp to start streaming incentives to APs.
+    /// @custom:field endTimestamp - The timestamp to stop streaming incentives to APs.
+    /// @custom:field rate - The rate, expressed is incentives per second, to stream incentives at. Scaled up by WAD.
     struct StreamState {
         uint32 startTimestamp;
         uint32 endTimestamp;
         uint192 rate;
     }
 
+    /// @notice Incentivized Action Market - A market in the Recipe Chef, composed of deposit/withdraw recipes and incentive streams.
+    /// @custom:field depositRecipe - The weiroll recipe to execute for a deposit into the market.
+    /// @custom:field withdrawRecipe - The weiroll recipe to execute for a withdrawal from the market.
+    /// @custom:field totalLiquidity - The total amount of liquidity currently in this market. Used as the denominator when calculating per AP rewards.
+    /// @custom:mapping incentiveToStreamState - A mapping from incentive address to the state of its incentive stream.
     struct IAM {
         Recipe depositRecipe;
         Recipe withdrawRecipe;
-        uint256 totalQuantityDeposited;
+        uint256 totalLiquidity;
         mapping(address incentive => StreamState state) incentiveToStreamState;
     }
 
     mapping(bytes32 id => IAM market) incentiveCampaignIdToIAM;
 
-    mapping(address ap => uint256 nonce) apToWeirollWalletNonce;
+    mapping(address ap => uint96 nonce) apToWeirollWalletNonce;
 
     event IAMCreated(
         bytes32 incentiveCampaignId, uint32 startTimestamp, uint32 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint192[] rates
@@ -44,7 +54,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
     error InvalidCampaignDuration();
     error EmissionRateMustBeNonZero();
-    error QuantityDepostedMustBeNonZero();
+    error LiquidityDepostedMustBeNonZero();
 
     constructor(address _incentiveLocker, address _weirollWalletV2Implementation) ActionVerifierBase(_incentiveLocker) {
         WEIROLL_WALLET_V2_IMPLEMENTATION = _weirollWalletV2Implementation;
@@ -85,31 +95,47 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         emit IAMCreated(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
     }
 
-    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external returns (uint256 tokenId, address payable weirollWallet) {
+    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external returns (uint256 positionId, address payable weirollWallet) {
         // Get the market from storage
         IAM storage market = incentiveCampaignIdToIAM[_incentiveCampaignId];
 
-        // Mints an NFT representing the AP's Royco position
-        _safeMint(msg.sender, (tokenId = tokenId++));
+        // Calculate the positionId for this mint using the APs nonce
+        // The upper 20 bytes will always be unique per address, so the lower 12 bytes give the AP (2^96 - 1) unique token ids
+        positionId = uint256(bytes32(abi.encodePacked(msg.sender, apToWeirollWalletNonce[msg.sender]++)));
 
-        // Deploy a fresh Weiroll Wallet which can be controlled by the AP's Royco Position NFT
-        weirollWallet = payable(
-            WEIROLL_WALLET_V2_IMPLEMENTATION.cloneDeterministicWithImmutableArgs(
-                abi.encodePacked(address(this)), computeNextWeirollWalletDeploymentSalt(msg.sender, apToWeirollWalletNonce[msg.sender]++)
-            )
-        );
+        // Deploy a fresh Weiroll Wallet which can be controlled by the Royco Position NFT
+        // Set the RecipeChef address and position ID as its immutable args
+        // Use the positionId as the salt for deterministic deployment, so the AP can pre-approve the Weiroll Wallet to spend tokens for deposit
+        weirollWallet =
+            payable(WEIROLL_WALLET_V2_IMPLEMENTATION.cloneDeterministicWithImmutableArgs(abi.encodePacked(address(this), positionId), bytes32(positionId)));
 
         // Execute the Weiroll Recipe through the fresh Weiroll Wallet
-        // The quantity returned will be used to calculate the user's share of rewards in the stream
-        uint256 quantity =
+        // The liquidity returned will be used to calculate the user's share of rewards in the stream
+        uint256 liquidity =
             WeirollWalletV2(weirollWallet).executeWeirollRecipe(market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams);
+        // Check that the deposit recipe rendered a non-zero liquidity
+        require(liquidity > 0, LiquidityDepostedMustBeNonZero());
 
-        // Check that something was deposited
-        require(quantity > 0, QuantityDepostedMustBeNonZero());
+        // Mints an NFT representing the AP's Royco position
+        _safeMint(msg.sender, positionId);
+
+        // Add the liquidity of this position to the market's total liquidity
+        market.totalLiquidity += liquidity;
+
+        // Initialize the Royco position state and set the positionId to map to it
+        RoycoPosition storage position = positionIdToPosition[positionId];
+        position.incentiveCampaignId = _incentiveCampaignId;
+        position.owner = msg.sender;
+        position.weirollWallet = weirollWallet;
+        position.checkpoint = uint32(block.timestamp);
+        position.liquidity = liquidity;
     }
 
-    function computeNextWeirollWalletDeploymentSalt(address _ap, uint256 _nonce) public pure returns (bytes32 salt) {
-        salt = keccak256(abi.encodePacked(_ap, _nonce));
+    function getNextWeirollWalletAddress(address _ap) public view returns (address nextWeirollWallet) {
+        uint256 nextPositionId = uint256(bytes32(abi.encodePacked(_ap, apToWeirollWalletNonce[_ap])));
+        nextWeirollWallet = WEIROLL_WALLET_V2_IMPLEMENTATION.predictDeterministicAddressWithImmutableArgs(
+            abi.encodePacked(address(this), nextPositionId), bytes32(nextPositionId)
+        );
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
