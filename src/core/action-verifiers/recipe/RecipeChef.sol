@@ -34,7 +34,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         onlyIncentiveLocker
     {
         // Decode the action params to get the initial market duration and recipes
-        (uint40 startTimestamp, uint40 endTimestamp, Recipe memory depositRecipe, Recipe memory withdrawRecipe) =
+        (uint40 startTimestamp, uint40 endTimestamp, Recipe memory depositRecipe, Recipe memory withdrawalRecipe) =
             abi.decode(_actionParams, (uint40, uint40, Recipe, Recipe));
 
         // Check that the duration is valid
@@ -43,7 +43,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         // Set the market's deposit recipes
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
         market.depositRecipe = depositRecipe;
-        market.withdrawRecipe = withdrawRecipe;
+        market.withdrawalRecipe = withdrawalRecipe;
         market.incentives = _incentivesOffered;
 
         // Initialize the incentive stream states

@@ -38,13 +38,13 @@ abstract contract RoycoPositionManager is ERC721 {
 
     /// @notice A market in the Recipe Chef, composed of deposit/withdraw recipes for moving liquidity and incentive streams for providing liquidity.
     /// @custom:field depositRecipe - The weiroll recipe to execute for a deposit into the market.
-    /// @custom:field withdrawRecipe - The weiroll recipe to execute for a withdrawal from the market.
+    /// @custom:field withdrawalRecipe - The weiroll recipe to execute for a withdrawal from the market.
     /// @custom:field totalLiquidity - The total amount of liquidity currently in this market. Used as the denominator when calculating per AP rewards.
     /// @custom:mapping incentiveToStreamInterval - A mapping from incentive address to its stream interval.
     /// @custom:mapping incentiveToStreamState - A mapping from incentive address to its stream state.
     struct Market {
         Recipe depositRecipe;
-        Recipe withdrawRecipe;
+        Recipe withdrawalRecipe;
         uint256 totalLiquidity;
         address[] incentives;
         mapping(address incentive => StreamInterval interval) incentiveToStreamInterval;
@@ -90,6 +90,8 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionAddedLiquidity(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityAdded);
 
+    event PositionRemovedLiquidity(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
+
     error LiquidityDepositedMustBeNonZero();
     error OnlyPositionOwner();
 
@@ -130,7 +132,7 @@ abstract contract RoycoPositionManager is ERC721 {
         weirollWallet =
             payable(WEIROLL_WALLET_V2_IMPLEMENTATION.cloneDeterministicWithImmutableArgs(abi.encodePacked(address(this), positionId), bytes32(positionId)));
 
-        // Execute the Weiroll Recipe through the fresh Weiroll Wallet
+        // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
         // The liquidity returned will be used to calculate the user's share of rewards in the stream
         uint256 liquidity = WeirollWalletV2(weirollWallet).executeWeirollRecipe(
             msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
@@ -171,19 +173,45 @@ abstract contract RoycoPositionManager is ERC721 {
         // Update the incentives accumulated for this position in addition to all stream states for its market
         _updateIncentivesForPosition(market, position);
 
-        // Execute the Weiroll Recipe through theis position's Weiroll Wallet
-        // The liquidity returned will be used to calculate the user's share of rewards in the stream
-        uint256 liquidity = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe(
+        // Execute the Deposit Weiroll Recipe through theis position's Weiroll Wallet
+        uint256 liquidityAdded = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe(
             msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
         );
 
         // Update the position's liquidity units to reflect the increase after depositing.
-        position.liquidity += liquidity;
+        position.liquidity += liquidityAdded;
         // Add the increase in liquidity units for this position to the market's total liquidity units.
-        market.totalLiquidity += liquidity;
+        market.totalLiquidity += liquidityAdded;
 
         // Emit an event to signal the position adding liquidity
-        emit PositionAddedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidity);
+        emit PositionAddedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidityAdded);
+    }
+
+    function removeLiquidty(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[_positionId];
+
+        // Cache the incentive campaign ID
+        bytes32 incentiveCampaignId = position.incentiveCampaignId;
+        // Get the market from storage
+        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+
+        // Update the incentives accumulated for this position in addition to all stream states for its market
+        _updateIncentivesForPosition(market, position);
+
+        // Execute the Weiroll Recipe through theis position's Weiroll Wallet
+        // The liquidity returned will be used to calculate the user's share of rewards in the stream
+        uint256 liquidityRemoved = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe(
+            msg.sender, market.withdrawalRecipe.weirollCommands, market.withdrawalRecipe.weirollState, _executionParams
+        );
+
+        // Update the position's liquidity units to reflect the decrease after withdrawing.
+        position.liquidity -= liquidityRemoved;
+        // Subtract the decrease in liquidity units for this position from the market's total liquidity units.
+        market.totalLiquidity -= liquidityRemoved;
+
+        // Emit an event to signal the position removing liquidity
+        emit PositionRemovedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidityRemoved);
     }
 
     function _updateIncentivesForPosition(Market storage _market, RoycoPosition storage _position) internal {
