@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import { ActionVerifierBase } from "../base/ActionVerifierBase.sol";
-import { RoycoPositionManager } from "./RoycoPositionManager.sol";
+import { RoycoPositionManager } from "./base/RoycoPositionManager.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
@@ -11,7 +11,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     constructor(address _incentiveLocker) ActionVerifierBase(_incentiveLocker) { }
 
     event MarketCreated(
-        bytes32 incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint192[] rates
+        bytes32 incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint176[] rates
     );
 
     error InvalidCampaignDuration();
@@ -47,7 +47,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         market.incentives = _incentivesOffered;
 
         // Initialize the incentive stream states
-        uint192[] memory rates = _initializeIncentiveStreams(market, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+        uint176[] memory rates = _initializeIncentiveStreams(market, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
 
         // Emit an event to signal market creation
         emit MarketCreated(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
@@ -134,22 +134,22 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint256[] memory _incentiveAmounts
     )
         internal
-        returns (uint192[] memory rates)
+        returns (uint176[] memory rates)
     {
         // Initialize the incentive streams
         uint256 numIncentives = _incentives.length;
-        rates = new uint192[](numIncentives);
+        rates = new uint176[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
             // Calculate the intial emission rate for this incentive scaled up by WAD
-            rates[i] = uint192((_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp));
+            rates[i] = uint176((_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp));
             // Check that the rate is non-zero
             require(rates[i] > 0, EmissionRateMustBeNonZero());
 
             // Update the stream state to reflect the rate
-            StreamState storage stream = _market.incentiveToStreamState[_incentives[i]];
-            stream.startTimestamp = _startTimestamp;
-            stream.endTimestamp = _endTimestamp;
-            stream.rate = rates[i];
+            StreamInterval storage interval = _market.incentiveToStreamInterval[_incentives[i]];
+            interval.startTimestamp = _startTimestamp;
+            interval.endTimestamp = _endTimestamp;
+            interval.rate = rates[i];
         }
     }
 }
