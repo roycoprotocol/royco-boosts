@@ -32,13 +32,6 @@ contract RoycoPositionManager is ERC721 {
         uint256 rate;
     }
 
-    /// @custom:field accumulatedByUser - The incentives accumulated for this user for this stream.
-    /// @custom:field accumulatedByStream - The incentives accumulated by the stream at its last update timestamp.
-    struct ApStreamState {
-        uint256 accumulatedByUser;
-        uint256 accumulatedByStream;
-    }
-
     /// @notice A market in the Recipe Chef, composed of deposit/withdraw recipes for moving liquidity and incentive streams for providing liquidity.
     /// @custom:field depositRecipe - The weiroll recipe to execute for a deposit into the market.
     /// @custom:field withdrawRecipe - The weiroll recipe to execute for a withdrawal from the market.
@@ -52,6 +45,14 @@ contract RoycoPositionManager is ERC721 {
         mapping(address incentive => StreamState state) incentiveToStreamState;
     }
 
+    /// @notice PositionStreamState - A struct representing the incentives accumulated by this position for a stream.
+    /// @custom:field accumulatedByPosition - The incentives accumulated for this position for this stream.
+    /// @custom:field accumulatedByStream - The incentives accumulated by the stream at its last update timestamp.
+    struct PositionStreamState {
+        uint256 accumulatedByPosition;
+        uint256 accumulatedByStream;
+    }
+
     /// @notice A structure representing a Royco V2 RecipeChef Position
     /// @custom:field incentiveCampaignId An identifier for the campaign/market that this position is for.
     struct RoycoPosition {
@@ -59,7 +60,7 @@ contract RoycoPositionManager is ERC721 {
         address weirollWallet;
         uint40 lastUpdateTimestamp;
         uint256 liquidity;
-        mapping(address ap => mapping(address incentive => ApStreamState state)) apToIncentiveToStreamState;
+        mapping(address incentive => PositionStreamState state) incentiveToPositionStreamState;
     }
 
     /// @notice A mapping from an incentive campaign ID to its corresponding RecipeChef Market.
