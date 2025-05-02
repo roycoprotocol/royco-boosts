@@ -17,6 +17,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
+    /// @notice Maximum number of incentives per campaign
+    uint256 public constant MAX_INCENTIVES_PER_CAMPAIGN = 20;
+
     /// @notice Incentive Campaign State - The state of an incentive campaign on Royco
     /// @custom:field ip The incentive provider who created the campaign.
     /// @custom:field protocolFeeClaimant The protocol fee claimant entitled to protocol fees for this campaign.
@@ -141,6 +144,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Thrown when an attempt is made to add zero incentive amounts.
     error CannotOfferZeroIncentives();
+
+    /// @notice Thrown when an attempt is made to add more incentives than the maximum.
+    error MaxNumIncentivesExceeded();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -636,6 +642,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             _ics.incentiveToAmountOffered[incentive] += incentiveAmount;
             _ics.incentiveToAmountRemaining[incentive] += incentiveAmount;
         }
+
+        // Ensure that the number of incentives in the campaign don't exceed the maximum
+        require(_ics.incentivesOffered.length <= MAX_INCENTIVES_PER_CAMPAIGN, MaxNumIncentivesExceeded());
     }
 
     /// @notice Processes a single incentive claim for a given incentive campaign.
