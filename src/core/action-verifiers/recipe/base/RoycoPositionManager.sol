@@ -19,7 +19,7 @@ abstract contract RoycoPositionManager is ERC721 {
     }
 
     /// @notice The current state of the incentive stream.
-    /// @custom:field accumulated - The incentives accumulated per liquidity unit for this stream.
+    /// @custom:field accumulated - The incentives accumulated per liquidity unit (scaled up by a precision factor) at the last update timestamp.
     /// @custom:field lastUpdateTimestamp - The timestamp when the accumulator was last updated.
     struct StreamState {
         uint256 accumulated;
@@ -29,7 +29,7 @@ abstract contract RoycoPositionManager is ERC721 {
     /// @notice StreamState - The state of incentive stream for a RecipeChef market
     /// @custom:field startTimestamp - The timestamp to start streaming incentives to APs.
     /// @custom:field endTimestamp - The timestamp to stop streaming incentives to APs.
-    /// @custom:field rate - The rate, expressed is incentives per second, to stream incentives at. Scaled up by PRECISION_FACTOR.
+    /// @custom:field rate - The rate, expressed is incentives per second, to stream incentives at. Scaled up by WAD.
     struct StreamInterval {
         uint40 startTimestamp;
         uint40 endTimestamp;
@@ -39,9 +39,9 @@ abstract contract RoycoPositionManager is ERC721 {
     /// @notice A market in the Recipe Chef, composed of deposit/withdraw recipes for moving liquidity and incentive streams for providing liquidity.
     /// @custom:field depositRecipe - The weiroll recipe to execute for a deposit into the market.
     /// @custom:field withdrawalRecipe - The weiroll recipe to execute for a withdrawal from the market.
-    /// @custom:field totalLiquidity - The total amount of liquidity currently in this market. Used as the denominator when calculating per AP rewards.
-    /// @custom:mapping incentiveToStreamInterval - A mapping from incentive address to its stream interval.
-    /// @custom:mapping incentiveToStreamState - A mapping from incentive address to its stream state.
+    /// @custom:field totalLiquidity - The total amount of liquidity units currently in this market. Used to update the accumulator for incentive streams.
+    /// @custom:mapping incentiveToStreamInterval - A mapping from an incentive address to its stream interval.
+    /// @custom:mapping incentiveToStreamState - A mapping from an incentive address to its stream state.
     struct Market {
         Recipe depositRecipe;
         Recipe withdrawalRecipe;
@@ -60,7 +60,10 @@ abstract contract RoycoPositionManager is ERC721 {
     }
 
     /// @notice A structure representing a Royco V2 RecipeChef Position
-    /// @custom:field incentiveCampaignId An identifier for the campaign/market that this position is for.
+    /// @custom:field incentiveCampaignId - An identifier for the campaign/market that this position belongs to.
+    /// @custom:field weirollWallet - The weiroll wallet proxy used to manage liquidity for this position.
+    /// @custom:field liquidity - The liquidity units currently held by this position.
+    /// @custom:mapping incentiveToPositionIncentives - A mapping from an incentive address to its incentives accumulated checkpoint.
     struct RoycoPosition {
         bytes32 incentiveCampaignId;
         address weirollWallet;
@@ -92,8 +95,12 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionRemovedLiquidity(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
 
+    event PositionBurned(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap);
+
     error LiquidityDepositedMustBeNonZero();
     error OnlyPositionOwner();
+    error MustRemoveAllLiquidityToBurn();
+    error MustClaimIncentivesToBurn(address incentive);
 
     /// @notice Modifier that restricts the caller to be the owner of the position.
     /// @param _positionId The position ID of the position the caller must be the owner of.
@@ -143,17 +150,17 @@ abstract contract RoycoPositionManager is ERC721 {
         // Mints an NFT representing the AP's Royco position
         _safeMint(msg.sender, positionId);
 
-        // Initialize the Royco position state and set the positionId to map to it
+        // Initialize the Royco position state
         RoycoPosition storage position = positionIdToPosition[positionId];
+        position.incentiveCampaignId = _incentiveCampaignId;
+        position.weirollWallet = weirollWallet;
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
         // Update needs to happen before this position and market's liquidity units are updated
         _updateIncentivesForPosition(market, position);
 
-        position.incentiveCampaignId = _incentiveCampaignId;
-        position.weirollWallet = weirollWallet;
+        // Initialize the position's liquidity units
         position.liquidity = liquidity;
-
         // Add the liquidity units for this position to the market's total liquidity units
         market.totalLiquidity += liquidity;
 
@@ -212,6 +219,41 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Emit an event to signal the position removing liquidity
         emit PositionRemovedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidityRemoved);
+    }
+
+    function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[_positionId];
+
+        // Ensure that all liquidity has been removed from this position to avoid burning AP capital
+        require(position.liquidity == 0, MustRemoveAllLiquidityToBurn());
+
+        // Cache the incentive campaign ID
+        bytes32 incentiveCampaignId = position.incentiveCampaignId;
+
+        // Get the market from storage
+        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+
+        // Check that all incentives have been claimed by this position
+        uint256 numIncentives = market.incentives.length;
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            address incentive = market.incentives[i];
+            // Update the incentives accumulated by this position
+            uint256 incentivesAccumulated = _updateIncentivesForPosition(market, incentive, position).accumulatedByPosition;
+            // Ensure that all incentives for this position have been claimed
+            require(incentivesAccumulated == 0, MustClaimIncentivesToBurn(incentive));
+            // Clear the incentive mapping slot for this position for gas savings
+            delete position.incentiveToPositionIncentives[incentive];
+        }
+
+        // Account for the burn in the positions mapping for gas savings
+        delete positionIdToPosition[_positionId];
+
+        // Burn the position's NFT
+        _burn(_positionId);
+
+        // Emit an event to signal the position removing liquidity
+        emit PositionBurned(incentiveCampaignId, _positionId, msg.sender);
     }
 
     function _updateIncentivesForPosition(Market storage _market, RoycoPosition storage _position) internal {
