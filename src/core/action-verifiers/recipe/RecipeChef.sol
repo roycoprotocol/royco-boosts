@@ -16,6 +16,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
     error InvalidCampaignDuration();
     error EmissionRateMustBeNonZero();
+    error MustClaimFromCorrectCampaign();
 
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
@@ -104,7 +105,30 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         override
         onlyIncentiveLocker
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
-    { }
+    {
+        uint256 positionId;
+        // Decode the claim params to get the positionId they are trying to claim incentives for in addition to the incentives to claim
+        (positionId, incentives) = abi.decode(_claimParams, (uint256, address[]));
+        // Check that the claim invoker is the owner of the position they are trying to claim incentives for
+        require(ownerOf(positionId) == _ap, OnlyPositionOwner());
+
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[positionId];
+        // Ensure that the position the AP is claiming for is for the specified campaign
+        require(_incentiveCampaignId == position.incentiveCampaignId, MustClaimFromCorrectCampaign());
+
+        // Get the market from storage
+        Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
+        // Iterate through the incentives the AP wants to claim and account for the claim.
+        uint256 numIncentives = incentives.length;
+        incentiveAmountsOwed = new uint256[](numIncentives);
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Set the amount owed to the incentives accumulated by this position
+            incentiveAmountsOwed[i] = _updateIncentivesForPosition(market, incentives[i], position).accumulatedByPosition;
+            // Account for the claim
+            delete position.incentiveToPositionIncentives[incentives[i]].accumulatedByPosition;
+        }
+    }
 
     /// @notice Returns the maximum amounts that can be removed from a given campaign for the specified incentives.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.

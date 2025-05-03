@@ -238,10 +238,10 @@ abstract contract RoycoPositionManager is ERC721 {
         uint256 numIncentives = market.incentives.length;
         for (uint256 i = 0; i < numIncentives; ++i) {
             address incentive = market.incentives[i];
-            // Update the incentives accumulated by this position
-            uint256 incentivesAccumulated = _updateIncentivesForPosition(market, incentive, position).accumulatedByPosition;
+            // Update the incentives owed to this position in addition to the market's stream
+            uint256 incentivesOwed = _updateIncentivesForPosition(market, incentive, position).accumulatedByPosition;
             // Ensure that all incentives for this position have been claimed
-            require(incentivesAccumulated == 0, MustClaimIncentivesToBurn(incentive));
+            require(incentivesOwed == 0, MustClaimIncentivesToBurn(incentive));
             // Clear the incentive mapping slot for this position for gas savings
             delete position.incentiveToPositionIncentives[incentive];
         }
