@@ -125,7 +125,7 @@ abstract contract RoycoPositionManager is ERC721 {
         );
     }
 
-    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external returns (uint256 positionId, address payable weirollWallet) {
+    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external payable returns (uint256 positionId, address payable weirollWallet) {
         // Get the market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
 
@@ -141,7 +141,7 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
         // The liquidity returned will be used to calculate the user's share of rewards in the stream
-        uint256 liquidity = WeirollWalletV2(weirollWallet).executeWeirollRecipe(
+        uint256 liquidity = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(
             msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
         );
         // Check that the deposit recipe rendered a non-zero liquidity
@@ -168,7 +168,7 @@ abstract contract RoycoPositionManager is ERC721 {
         emit PositionMinted(_incentiveCampaignId, positionId, msg.sender, weirollWallet, liquidity);
     }
 
-    function addLiquidity(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
+    function addLiquidity(uint256 _positionId, bytes calldata _executionParams) external payable onlyPositionOwner(_positionId) {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -181,7 +181,7 @@ abstract contract RoycoPositionManager is ERC721 {
         _updateIncentivesForPosition(market, position);
 
         // Execute the Deposit Weiroll Recipe through theis position's Weiroll Wallet
-        uint256 liquidityAdded = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe(
+        uint256 liquidityAdded = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe{ value: msg.value }(
             msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
         );
 
