@@ -126,7 +126,7 @@ abstract contract RoycoPositionManager is ERC721 {
     }
 
     function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external payable returns (uint256 positionId, address payable weirollWallet) {
-        // Get the market from storage
+        // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
 
         // Calculate the positionId for this mint using the AP's nonce
@@ -174,7 +174,7 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Cache the incentive campaign ID
         bytes32 incentiveCampaignId = position.incentiveCampaignId;
-        // Get the market from storage
+        // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
@@ -200,7 +200,7 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Cache the incentive campaign ID
         bytes32 incentiveCampaignId = position.incentiveCampaignId;
-        // Get the market from storage
+        // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
@@ -231,7 +231,7 @@ abstract contract RoycoPositionManager is ERC721 {
         // Cache the incentive campaign ID
         bytes32 incentiveCampaignId = position.incentiveCampaignId;
 
-        // Get the market from storage
+        // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
 
         // Check that all incentives have been claimed by this position

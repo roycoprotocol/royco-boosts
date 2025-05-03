@@ -106,18 +106,19 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         onlyIncentiveLocker
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
+        // Decode the claim params to get the position ID the AP is trying to claim incentives for in addition to the incentives to claim
         uint256 positionId;
-        // Decode the claim params to get the positionId they are trying to claim incentives for in addition to the incentives to claim
         (positionId, incentives) = abi.decode(_claimParams, (uint256, address[]));
-        // Check that the claim invoker is the owner of the position they are trying to claim incentives for
+        // Check that the AP is the owner of the position they are trying to claim incentives for
         require(ownerOf(positionId) == _ap, OnlyPositionOwner());
 
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[positionId];
         // Ensure that the position the AP is claiming for is for the specified campaign
+        // This precludes comingling of incentives between disparate incentive campaigns in the Incentive Locker
         require(_incentiveCampaignId == position.incentiveCampaignId, MustClaimFromCorrectCampaign());
 
-        // Get the market from storage
+        // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
         // Iterate through the incentives the AP wants to claim and account for the claim.
         uint256 numIncentives = incentives.length;
