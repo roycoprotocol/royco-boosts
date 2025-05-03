@@ -26,30 +26,6 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         DECREASE_RATE
     }
 
-    /// @notice Action parameters for this action verifier.
-    /// @custom:field startTimestamp The timestamp to start streaming incentives for this campaign.
-    /// @custom:field endTimestamp The timestamp to stop streaming incentives for this campaign.
-    /// @custom:field avmVersion The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
-    ///               The AVM uses semantic versioning (SemVer).
-    /// @custom:field avmParams Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
-    ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
-    struct ActionParams {
-        uint32 startTimestamp;
-        uint32 endTimestamp;
-        string avmVersion;
-        bytes avmParams;
-    }
-
-    /// @notice Parameters used for user claims.
-    /// @custom:field incentives The total incentive tokens to pay out to the AP so far.
-    /// @custom:field incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
-    /// @custom:field merkleProof A merkle proof for leaf = keccak256(abi.encode(AP address, incentives, incentiveAmountsOwed))
-    struct ClaimParams {
-        address[] incentives;
-        uint256[] incentiveAmountsOwed;
-        bytes32[] merkleProof;
-    }
-
     /// @notice Maps an incentiveCampaignId to its incentives and their corresponding current rate.
     mapping(bytes32 id => mapping(address incentive => uint256 currentRate)) public incentiveCampaignIdToIncentiveToCurrentRate;
 
@@ -124,6 +100,13 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         onlyIncentiveLocker
     {
         // Decode the action params and extract the campaign duration
+        /// Action parameters for this action verifier.
+        /// startTimestamp - The timestamp to start streaming incentives for this campaign.
+        /// endTimestamp - The timestamp to stop streaming incentives for this campaign.
+        /// avmVersio - The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
+        ///               The AVM uses semantic versioning (SemVer).
+        /// avmParams - Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
+        ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
         (uint32 startTimestamp, uint32 endTimestamp,,) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
 
         // Check that the duration is valid
@@ -196,33 +179,35 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         onlyIncentiveLocker
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
-        // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
-        ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
+        // Decode the claim params to get the incentives, amounts to claims, and merkle proof to verify the claim
+        bytes32[] memory merkleProof;
+        (incentives, incentiveAmountsOwed, merkleProof) = abi.decode(_claimParams, (address[], uint256[], bytes32[]));
+
         // Verify each incentive to claim has a corresponding amount owed
-        uint256 numIncentivesToClaim = params.incentives.length;
-        require(numIncentivesToClaim == params.incentiveAmountsOwed.length, ArrayLengthMismatch());
+        uint256 numIncentivesToClaim = incentives.length;
+        require(numIncentivesToClaim == incentiveAmountsOwed.length, ArrayLengthMismatch());
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
         // Compute the leaf from the user's address and ratio, then check if already claimed.
-        bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.incentiveAmountsOwed));
+        bytes32 leaf = keccak256(abi.encode(_ap, incentives, incentiveAmountsOwed));
         // Verify the proof against the stored Merkle root.
-        require(MerkleProof.verify(params.merkleProof, merkleRoot, leaf), InvalidMerkleProof());
+        require(MerkleProof.verify(merkleProof, merkleRoot, leaf), InvalidMerkleProof());
 
         // Mark the claim as processed and return what the user is still owed
         uint256 numNonZeroIncentives = 0;
         incentives = new address[](numIncentivesToClaim);
         incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
-            address incentive = params.incentives[i];
+            address incentive = incentives[i];
             // Calculate the unclaimed incentive amount: total owed - already claimed
-            uint256 unclaimedIncentiveAmount = params.incentiveAmountsOwed[i] - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
+            uint256 unclaimedIncentiveAmount = incentiveAmountsOwed[i] - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
             if (unclaimedIncentiveAmount > 0) {
                 // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
                 incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
                 // Mark everything as claimed
-                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = params.incentiveAmountsOwed[i];
+                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = incentiveAmountsOwed[i];
             }
         }
 
