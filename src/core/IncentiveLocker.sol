@@ -17,9 +17,6 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
-    /// @notice Maximum number of incentives per campaign
-    uint256 public constant MAX_INCENTIVES_PER_CAMPAIGN = 20;
-
     /// @notice Incentive Campaign State - The state of an incentive campaign on Royco
     /// @custom:field ip The incentive provider who created the campaign.
     /// @custom:field protocolFeeClaimant The protocol fee claimant entitled to protocol fees for this campaign.
@@ -47,6 +44,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address claimant => mapping(address token => uint256 amountOwed)) public feeClaimantToTokenToAmount;
+
+    /// @notice Maximum number of incentives per campaign
+    uint256 public constant MAX_INCENTIVES_PER_CAMPAIGN = 20;
 
     /// @notice Protocol fee rate (1e18 equals 100% fee).
     uint64 public defaultProtocolFee;

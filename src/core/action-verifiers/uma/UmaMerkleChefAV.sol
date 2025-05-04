@@ -103,7 +103,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         /// Action parameters for this action verifier.
         /// startTimestamp - The timestamp to start streaming incentives for this campaign.
         /// endTimestamp - The timestamp to stop streaming incentives for this campaign.
-        /// avmVersio - The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
+        /// avmVersion - The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
         ///               The AVM uses semantic versioning (SemVer).
         /// avmParams - Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
         ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
@@ -219,9 +219,6 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
             mstore(incentives, numNonZeroIncentives)
             mstore(incentiveAmountsOwed, numNonZeroIncentives)
         }
-
-        // Return the incentives and amounts owed to the incentive locker
-        return (incentives, incentiveAmountsOwed);
     }
 
     /// @notice Returns the maximum amounts that can be removed from a given campaign for the specified incentives.

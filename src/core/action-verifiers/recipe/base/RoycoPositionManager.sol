@@ -97,6 +97,10 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionBurned(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap);
 
+    event PositionIncentivesUpdated(uint256 indexed positionId, address incentive, uint256 incentivesOwed);
+
+    event StreamStateUpdated(bytes32 indexed incentiveCampaignId, address incentive, uint256 incentivesPerLiquidity);
+
     error LiquidityDepositedMustBeNonZero();
     error OnlyPositionOwner();
     error MustRemoveAllLiquidityToBurn();
@@ -157,7 +161,7 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
         // Update needs to happen before this position and market's liquidity units are updated
-        _updateIncentivesForPosition(market, position);
+        _updateIncentivesForPosition(_incentiveCampaignId, market, positionId, position);
 
         // Initialize the position's liquidity units
         position.liquidity = liquidity;
@@ -178,7 +182,7 @@ abstract contract RoycoPositionManager is ERC721 {
         Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
-        _updateIncentivesForPosition(market, position);
+        _updateIncentivesForPosition(incentiveCampaignId, market, _positionId, position);
 
         // Execute the Deposit Weiroll Recipe through theis position's Weiroll Wallet
         uint256 liquidityAdded = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe{ value: msg.value }(
@@ -204,7 +208,7 @@ abstract contract RoycoPositionManager is ERC721 {
         Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
-        _updateIncentivesForPosition(market, position);
+        _updateIncentivesForPosition(incentiveCampaignId, market, _positionId, position);
 
         // Execute the Weiroll Recipe through theis position's Weiroll Wallet
         // The liquidity returned will be used to calculate the user's share of rewards in the stream
@@ -239,7 +243,7 @@ abstract contract RoycoPositionManager is ERC721 {
         for (uint256 i = 0; i < numIncentives; ++i) {
             address incentive = market.incentives[i];
             // Update the incentives owed to this position in addition to the market's stream
-            uint256 incentivesOwed = _updateIncentivesForPosition(market, incentive, position).accumulatedByPosition;
+            uint256 incentivesOwed = _updateIncentivesForPosition(incentiveCampaignId, market, incentive, _positionId, position).accumulatedByPosition;
             // Ensure that all incentives for this position have been claimed
             require(incentivesOwed == 0, MustClaimIncentivesToBurn(incentive));
             // Clear the incentive mapping slot for this position for gas savings
@@ -256,23 +260,32 @@ abstract contract RoycoPositionManager is ERC721 {
         emit PositionBurned(incentiveCampaignId, _positionId, msg.sender);
     }
 
-    function _updateIncentivesForPosition(Market storage _market, RoycoPosition storage _position) internal {
+    function _updateIncentivesForPosition(
+        bytes32 _incentiveCampaignId,
+        Market storage _market,
+        uint256 _positionId,
+        RoycoPosition storage _position
+    )
+        internal
+    {
         uint256 numIncentives = _market.incentives.length;
         for (uint256 i = 0; i < numIncentives; ++i) {
-            _updateIncentivesForPosition(_market, _market.incentives[i], _position);
+            _updateIncentivesForPosition(_incentiveCampaignId, _market, _market.incentives[i], _positionId, _position);
         }
     }
 
     function _updateIncentivesForPosition(
+        bytes32 _incentiveCampaignId,
         Market storage _market,
         address _incentive,
+        uint256 _positionId,
         RoycoPosition storage _position
     )
         internal
         returns (PositionIncentives memory positionIncentives)
     {
         // Get the updated incentive stream state
-        StreamState memory streamState = _updateStreamState(_market, _incentive);
+        StreamState memory streamState = _updateStreamState(_incentiveCampaignId, _market, _incentive);
         // Get this position's current stream state
         positionIncentives = _position.incentiveToPositionIncentives[_incentive];
 
@@ -284,6 +297,9 @@ abstract contract RoycoPositionManager is ERC721 {
             _computeIncentivesStreamedToPosition(_position.liquidity, positionIncentives.accumulatedByPosition, streamState.accumulated);
         // Update its cached stream accumulator to reflect the current one
         positionIncentives.accumulatedByStream = streamState.accumulated;
+
+        // Emit an event with the incenitves accumulated by this position
+        emit PositionIncentivesUpdated(_positionId, _incentive, positionIncentives.accumulatedByStream);
 
         // Write the new position's stream state to storage
         _position.incentiveToPositionIncentives[_incentive] = positionIncentives;
@@ -304,7 +320,14 @@ abstract contract RoycoPositionManager is ERC721 {
         incentivesOwed = _positionLiquidity.mulDivDown(accumulatedSinceLastUpdate, PRECISION_FACTOR);
     }
 
-    function _updateStreamState(Market storage _market, address _incentive) internal returns (StreamState memory resultingStreamState) {
+    function _updateStreamState(
+        bytes32 _incentiveCampaignId,
+        Market storage _market,
+        address _incentive
+    )
+        internal
+        returns (StreamState memory resultingStreamState)
+    {
         // Get the stream interval and rate
         StreamInterval memory streamInterval = _market.incentiveToStreamInterval[_incentive];
         // Get the current stream state from storage
@@ -314,6 +337,9 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // If the last update happened in the same block, skip writing to storage.
         if (intialStreamState.lastUpdateTimestamp == resultingStreamState.lastUpdateTimestamp) return resultingStreamState;
+
+        // Emit an event containing the current incentive stream's accumulator
+        emit StreamStateUpdated(_incentiveCampaignId, _incentive, resultingStreamState.accumulated);
 
         // Write the updated stream state to storage
         _market.incentiveToStreamState[_incentive] = resultingStreamState;
