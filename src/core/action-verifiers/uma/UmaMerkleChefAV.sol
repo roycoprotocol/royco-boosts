@@ -376,11 +376,8 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         override
         returns (bytes memory claim)
     {
-        // Decode the action params and extract the avmVersion and avmParams
+        // Decode the action params to extract the avmVersion and avmParams
         ActionParams memory params = abi.decode(_actionParams, (ActionParams));
-
-        // Cast the AVM params to a string for readability
-        string memory avmParamsStr = string(params.avmParams);
 
         // Marshal the UMA claim for this assertion
         claim = abi.encodePacked(
@@ -404,7 +401,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
             params.avmVersion,
             "\n",
             "AVM Params: ",
-            avmParamsStr
+            string(params.avmParams)
         );
     }
 
