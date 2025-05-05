@@ -26,6 +26,30 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         DECREASE_RATE
     }
 
+    /// @notice Action parameters for this action verifier.
+    /// @custom:field startTimestamp The timestamp to start streaming incentives for this campaign.
+    /// @custom:field endTimestamp The timestamp to stop streaming incentives for this campaign.
+    /// @custom:field avmVersion The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
+    ///               The AVM uses semantic versioning (SemVer).
+    /// @custom:field avmParams Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
+    ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
+    struct ActionParams {
+        uint40 startTimestamp;
+        uint40 endTimestamp;
+        string avmVersion;
+        bytes avmParams;
+    }
+
+    /// @notice Parameters used for user claims.
+    /// @custom:field incentives The total incentive tokens to pay out to the AP so far.
+    /// @custom:field totalIncentiveAmountsOwed The total amounts owed for each incentive in the incentives array for the entire duration of the campaign.
+    /// @custom:field merkleProof A merkle proof for leaf = keccak256(abi.encode(AP address, incentives, incentiveAmountsOwed))
+    struct ClaimParams {
+        address[] incentives;
+        uint256[] totalIncentiveAmountsOwed;
+        bytes32[] merkleProof;
+    }
+
     /// @notice Maps an incentiveCampaignId to its incentives and their corresponding current rate.
     mapping(bytes32 id => mapping(address incentive => uint256 currentRate)) public incentiveCampaignIdToIncentiveToCurrentRate;
 
@@ -35,7 +59,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
 
     /// @notice Maps an incentiveCampaignId to its time interval.
     /// @dev The start timestamp is stored in the upper 32 bits and the end timestamp in the lower 32 bits.
-    mapping(bytes32 id => uint64 interval) public incentiveCampaignIdToInterval;
+    mapping(bytes32 id => uint80 interval) public incentiveCampaignIdToInterval;
 
     /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed.
     /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
@@ -102,24 +126,19 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         override
         onlyIncentiveLocker
     {
-        // Decode the action params and extract the campaign duration
-        /// Action parameters for this action verifier.
-        /// startTimestamp - The timestamp to start streaming incentives for this campaign.
-        /// endTimestamp - The timestamp to stop streaming incentives for this campaign.
-        /// avmVersion - The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
-        ///               The AVM uses semantic versioning (SemVer).
-        /// avmParams - Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
-        ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
-        (uint32 startTimestamp, uint32 endTimestamp,,) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
+        // Decode the action params to get the campaign timestamps
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
         // Check that the duration is valid
-        require(endTimestamp > startTimestamp, InvalidCampaignDuration());
+        require(params.endTimestamp > params.startTimestamp, InvalidCampaignDuration());
 
         // Store the campaign duration
-        incentiveCampaignIdToInterval[_incentiveCampaignId] = (uint64(startTimestamp) << 32) | uint64(endTimestamp);
+        incentiveCampaignIdToInterval[_incentiveCampaignId] = (uint80(params.startTimestamp) << 40) | uint80(params.endTimestamp);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.INIT_STREAMS, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+        _modifyIncentiveStreams(
+            Modifications.INIT_STREAMS, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
+        );
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -138,7 +157,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         onlyIncentiveLocker
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
         _modifyIncentiveStreams(Modifications.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
@@ -165,7 +184,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         require(_ip == ip, OnlyMainIP());
 
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
         _modifyIncentiveStreams(Modifications.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
@@ -187,35 +206,38 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         onlyIncentiveLocker
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
-        // Decode the claim params to get the incentives, amounts to claims, and merkle proof to verify the claim
-        bytes32[] memory merkleProof;
-        (incentives, incentiveAmountsOwed, merkleProof) = abi.decode(_claimParams, (address[], uint256[], bytes32[]));
+        // Decode the claim parameters to retrieve the incentives amount owed and merkle proof to verify.
+        ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
 
         // Verify each incentive to claim has a corresponding amount owed
-        uint256 numIncentivesToClaim = incentives.length;
-        require(numIncentivesToClaim == incentiveAmountsOwed.length, ArrayLengthMismatch());
+        uint256 numIncentivesToClaim = params.incentives.length;
+        require(numIncentivesToClaim == params.totalIncentiveAmountsOwed.length, ArrayLengthMismatch());
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
         // Compute the leaf from the user's address and ratio, then check if already claimed.
-        bytes32 leaf = keccak256(abi.encode(_ap, incentives, incentiveAmountsOwed));
+        bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.totalIncentiveAmountsOwed));
         // Verify the proof against the stored Merkle root.
-        require(MerkleProof.verify(merkleProof, merkleRoot, leaf), InvalidMerkleProof());
+        require(MerkleProof.verify(params.merkleProof, merkleRoot, leaf), InvalidMerkleProof());
 
         // Mark the claim as processed and return what the user is still owed
         uint256 numNonZeroIncentives = 0;
         incentives = new address[](numIncentivesToClaim);
         incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
-            address incentive = incentives[i];
+            address incentive = params.incentives[i];
+            uint256 totalAmountOwed = params.totalIncentiveAmountsOwed[i];
+
             // Calculate the unclaimed incentive amount: total owed - already claimed
-            uint256 unclaimedIncentiveAmount = incentiveAmountsOwed[i] - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
+            uint256 unclaimedIncentiveAmount = totalAmountOwed - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
+
+            // If something to claim, append it to the amounts owed array
             if (unclaimedIncentiveAmount > 0) {
                 // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
                 incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
                 // Mark everything as claimed
-                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = incentiveAmountsOwed[i];
+                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = totalAmountOwed;
             }
         }
 
@@ -243,7 +265,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Check if the campaign is in progress
         bool campaignInProgress = block.timestamp > startTimestamp;
@@ -271,8 +293,8 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
     function _modifyIncentiveStreams(
         Modifications _modification,
         bytes32 _incentiveCampaignId,
-        uint32 _startTimestamp,
-        uint32 _endTimestamp,
+        uint40 _startTimestamp,
+        uint40 _endTimestamp,
         address[] memory _incentives,
         uint256[] memory _incentiveAmounts
     )
@@ -355,10 +377,10 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         returns (bytes memory claim)
     {
         // Decode the action params and extract the avmVersion and avmParams
-        (,, string memory avmVersion, bytes memory avmParams) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
         // Cast the AVM params to a string for readability
-        string memory avmParamsStr = string(avmParams);
+        string memory avmParamsStr = string(params.avmParams);
 
         // Marshal the UMA claim for this assertion
         claim = abi.encodePacked(
@@ -379,7 +401,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
             "\n",
             "AVM Implementation: https://github.com/roycoprotocol/royco-avm \n",
             "AVM Version: ",
-            avmVersion,
+            params.avmVersion,
             "\n",
             "AVM Params: ",
             avmParamsStr
@@ -388,13 +410,13 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
 
     /// @notice Returns the start and end timestamps for a given incentive campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @return startTimestamp The start timestamp stored in the upper 32 bits.
-    /// @return endTimestamp The end timestamp stored in the lower 32 bits.
-    function _getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint32 startTimestamp, uint32 endTimestamp) {
-        uint64 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
-        // Shift right to get the upper 32 bits
-        startTimestamp = uint32(duration >> 32);
-        // Simple cast to get the lower 32 bits
-        endTimestamp = uint32(duration);
+    /// @return startTimestamp The start timestamp stored in the upper 40 bits.
+    /// @return endTimestamp The end timestamp stored in the lower 40 bits.
+    function _getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint40 startTimestamp, uint40 endTimestamp) {
+        uint80 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
+        // Shift right to get the upper 40 bits
+        startTimestamp = uint40(duration >> 40);
+        // Simple cast to get the lower 40 bits
+        endTimestamp = uint40(duration);
     }
 }

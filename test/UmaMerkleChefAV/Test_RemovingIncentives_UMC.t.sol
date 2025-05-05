@@ -25,7 +25,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.
@@ -102,7 +102,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.
@@ -142,7 +142,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
 
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
 
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Prepare removal arrays for the first _numRemoved tokens.

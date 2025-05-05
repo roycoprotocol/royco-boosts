@@ -42,7 +42,8 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams =
+            abi.encode(UmaMerkleChefAV.ActionParams(uint40(block.timestamp), uint40(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
@@ -83,7 +84,8 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams =
+            abi.encode(UmaMerkleChefAV.ActionParams(uint40(block.timestamp), uint40(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
@@ -125,7 +127,8 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
-        bytes memory actionParams = abi.encode(block.timestamp, block.timestamp + 60 days, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams =
+            abi.encode(UmaMerkleChefAV.ActionParams(uint32(block.timestamp), uint32(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();

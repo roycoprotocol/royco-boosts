@@ -24,7 +24,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         uint32 additionTimestamp = uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
 
         // Encode action parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Generate additional incentives to be added.
@@ -102,7 +102,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         uint32 additionTimestamp = uint32(campaignEnd + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
 
         // Encode action parameters and create the incentive campaign.
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Generate additional incentives to be added.
