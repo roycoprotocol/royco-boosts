@@ -125,7 +125,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         incentiveAmountsOwed = new uint256[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
             // Set the amount owed to the incentives accumulated by this position
-            incentiveAmountsOwed[i] = _updateIncentivesForPosition(_incentiveCampaignId, market, incentives[i], positionId, position).accumulatedByPosition;
+            incentiveAmountsOwed[i] = _updateIncentivesForPosition(market, incentives[i], position).accumulatedByPosition;
             // Account for the claim
             delete position.incentiveToPositionIncentives[incentives[i]].accumulatedByPosition;
         }

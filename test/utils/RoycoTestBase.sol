@@ -72,16 +72,23 @@ contract RoycoTestBase is Test {
         vm.stopPrank();
     }
 
+    function _ensureFork() internal {
+        if (fork == 0) {
+            fork = vm.createFork(MAINNET_RPC_URL); // once per test run
+        }
+        vm.selectFork(fork); // cheap branch
+    }
+
     function setupUmaMerkleChefBaseEnvironment() public virtual {
         // Fork Mainnet
-        fork = vm.createFork(MAINNET_RPC_URL);
+        _ensureFork();
         setupWallets();
         setUpMerkleChefContracts();
     }
 
     function setupDumbBaseEnvironment() public virtual {
         // Fork Mainnet
-        fork = vm.createFork(MAINNET_RPC_URL);
+        _ensureFork();
         setupWallets();
         setUpDumbContracts();
     }
@@ -112,7 +119,6 @@ contract RoycoTestBase is Test {
     }
 
     function setUpMerkleChefContracts() public {
-        vm.selectFork(fork);
         // Deploy the Royco V2 contracts
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
         umaMerkleChefAV =
@@ -120,7 +126,6 @@ contract RoycoTestBase is Test {
     }
 
     function setUpDumbContracts() public {
-        vm.selectFork(fork);
         // Deploy the Royco V2 contracts
         incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
         dumbAV = new DumbAV();
