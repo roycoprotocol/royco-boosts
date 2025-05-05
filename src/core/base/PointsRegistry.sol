@@ -62,6 +62,9 @@ abstract contract PointsRegistry {
     /// @notice Thrown when provided arrays have mismatched lengths.
     error ArrayLengthMismatch();
 
+    /// @notice Thrown when trying to transfer points program ownership to the null address.
+    error InvalidOwner();
+
     /// @notice Thrown when a caller that is not the points program owner attempts a restricted action.
     error OnlyPointsProgramOwner();
 
@@ -135,6 +138,9 @@ abstract contract PointsRegistry {
     /// @param _pointsId The unique identifier of the points program to transfer ownership for.
     /// @param _newOwner The new owner of the points program.
     function transferPointsProgramOwnership(address _pointsId, address _newOwner) external {
+        // Cannot burn ownership
+        require(_newOwner != address(0), InvalidOwner());
+
         // Only the program owner can transfer ownership
         PointsProgram storage pointsProgram = pointsIdToProgram[_pointsId];
         require(pointsProgram.owner == msg.sender, OnlyPointsProgramOwner());

@@ -112,6 +112,8 @@ contract Test_PointsRegistry is RoycoTestBase {
     }
 
     function test_TransferPointsProgramOwnership(address _ip, address _newOwner) public prankModifier(_ip) {
+        vm.assume(_newOwner != address(0));
+
         address[] memory whitelistedIps = new address[](0);
         uint256[] memory spendCaps = new uint256[](0);
 
