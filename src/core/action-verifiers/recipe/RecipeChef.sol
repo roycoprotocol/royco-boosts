@@ -8,15 +8,25 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     using FixedPointMathLib for uint256;
 
+    enum StreamModification {
+        INIT_STREAM,
+        INCREASE_RATE,
+        DECREASE_RATE,
+        EXTEND_DURATION,
+        SHORTEN_DURATION
+    }
+
     constructor(address _incentiveLocker) ActionVerifierBase(_incentiveLocker) { }
 
-    event MarketCreated(
+    event IncentiveStreamsInitialized(
         bytes32 incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint176[] rates
     );
 
     error InvalidCampaignDuration();
-    error EmissionRateMustBeNonZero();
+    error InvalidStreamModification();
     error MustClaimFromCorrectCampaign();
+    error StreamInitializedAlready();
+    error EmissionRateMustBeNonZero();
 
     /// @notice Processes incentive campaign creation by validating the provided parameters.
     /// @param _incentiveCampaignId A unique hash identifier for the incentive campaign in the incentive locker.
@@ -50,8 +60,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         // Initialize the incentive stream states
         uint176[] memory rates = _initializeIncentiveStreams(market, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
 
-        // Emit an event to signal market creation
-        emit MarketCreated(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
+        // Emit an event to signal streams being initialized
+        emit IncentiveStreamsInitialized(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -59,18 +69,51 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     /// @param _incentivesAdded The list of incentives added to the campaign.
     /// @param _incentiveAmountsAdded Corresponding amounts added for each incentive token.
     /// @param _additionParams Arbitrary (optional) parameters used by the AV on addition.
-    /// @param _ip The address placing the incentives for this campaign.
     function processIncentivesAdded(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesAdded,
         uint256[] memory _incentiveAmountsAdded,
         bytes memory _additionParams,
-        address _ip
+        address /*_ip*/
     )
         external
         override
         onlyIncentiveLocker
-    { }
+    {
+        // First byte of the addition params contains the modification to make on addition
+        StreamModification modification = StreamModification(uint8(_additionParams[0]));
+
+        // If the IP wants to initialize new streams for incentives that don't exist
+        if (modification == StreamModification.INIT_STREAM) {
+            // Get the start and end timestamps of the new streams
+            uint40 startTimestamp;
+            uint40 endTimestamp;
+            assembly ("memory-safe") {
+                // Extract the first word after the params length and modification enum
+                let word := mload(add(_additionParams, 33))
+                // Shift right so the upper 40 bits are moved to the lower 40 bits
+                // Mask the result to clear the upper 216 bits
+                startTimestamp := and(shr(216, word), 0xffffffffff)
+                // Shift right so the second most upper 40 bits are moved to the lower 40 bits
+                // Mask the result to clear the upper 176 bits
+                endTimestamp := and(shr(176, word), 0xffffffffff)
+            }
+
+            // Initialize the incentive stream states
+            uint176[] memory rates = _initializeIncentiveStreams(
+                incentiveCampaignIdToMarket[_incentiveCampaignId], startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded
+            );
+
+            // Emit an event to signal streams being initialized
+            emit IncentiveStreamsInitialized(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded, rates);
+        } else if (modification == StreamModification.INCREASE_RATE) {
+            //
+        } else if (modification == StreamModification.EXTEND_DURATION) {
+            //
+        } else {
+            revert InvalidStreamModification();
+        }
+    }
 
     /// @notice Processes the removal of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
@@ -165,13 +208,22 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint256 numIncentives = _incentives.length;
         rates = new uint176[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
+            // Get the stream state storage pointer for this incentive
+            address incentive = _incentives[i];
+            StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
+
+            // Make sure that the stream isn't already initialized
+            require(interval.rate == 0, StreamInitializedAlready());
+
+            // Update the stream state so that we don't lose any incentives
+            _updateStreamState(_market, incentive);
+
             // Calculate the intial emission rate for this incentive scaled up by WAD
             rates[i] = uint176((_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp));
-            // Check that the rate is non-zero
+            // Check that the resulting rate is non-zero
             require(rates[i] > 0, EmissionRateMustBeNonZero());
 
             // Update the stream state to reflect the rate
-            StreamInterval storage interval = _market.incentiveToStreamInterval[_incentives[i]];
             interval.startTimestamp = _startTimestamp;
             interval.endTimestamp = _endTimestamp;
             interval.rate = rates[i];

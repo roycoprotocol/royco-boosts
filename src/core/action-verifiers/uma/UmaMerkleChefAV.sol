@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
+import { IncentiveLocker, UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
 import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
@@ -52,6 +52,9 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
 
     /// @notice Error thrown when the provided arrays have mismatched lengths.
     error ArrayLengthMismatch();
+
+    /// @notice Error thrown when a coIP is trying to remove incentives.
+    error OnlyMainIP();
 
     /// @notice Error thrown when there is no claimable incentive amount.
     error NothingToClaim();
@@ -145,17 +148,22 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _incentivesRemoved The list of  removed from the campaign.
     /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
+    /// @param _ip The address of the IP
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesRemoved,
         uint256[] memory _incentiveAmountsRemoved,
         bytes memory, /*_removalParams*/
-        address /*_ip*/
+        address _ip
     )
         external
         override
         onlyIncentiveLocker
     {
+        // Only the main campaign IP can remove incentives for this Acition Verifier
+        (, address ip) = IncentiveLocker(incentiveLocker).incentiveCampaignExists(_incentiveCampaignId);
+        require(_ip == ip, OnlyMainIP());
+
         // Get the start and end timestamps for the campaign
         (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 

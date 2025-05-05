@@ -110,10 +110,11 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     );
 
     /// @notice Emitted when fees are claimed.
-    /// @param claimant The address that claimed the fees.
     /// @param incentive The address of the incentive claimed as a fee.
+    /// @param claimant The address that claimed the fees.
+    /// @param recipient The address that received the claimed fees.
     /// @param amount The amount of fees claimed.
-    event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
+    event FeesClaimed(address indexed incentive, address indexed claimant, address indexed recipient, uint256 amount);
 
     /// @notice Emitted when the default protocol fee claimant is set.
     /// @param newDefaultProtocolFeeClaimant Address allowed to claim protocol fees.
@@ -281,9 +282,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsToRemove.length, ArrayLengthMismatch());
 
-        // Only the IP can remove incentives
+        // Only the IP or a whitelisted coIP can remove incentives
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
-        require(msg.sender == ics.ip, OnlyIP());
+        require(msg.sender == ics.ip || ics.coIpToWhitelisted[msg.sender], OnlyIP());
 
         address lastIncentive;
         for (uint256 i = 0; i < numIncentives; ++i) {
@@ -388,12 +389,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Claims accrued fees for a given incentive token.
     /// @param _incentiveToken The address of the incentive token.
-    /// @param _to The recipient address for the claimed fees.
-    function claimFees(address _incentiveToken, address _to) external nonReentrant {
+    /// @param _recipient The recipient address for the claimed fees.
+    function claimFees(address _incentiveToken, address _recipient) external nonReentrant {
         uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
         delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
-        ERC20(_incentiveToken).safeTransfer(_to, amount);
-        emit FeesClaimed(msg.sender, _incentiveToken, amount);
+        ERC20(_incentiveToken).safeTransfer(_recipient, amount);
+        emit FeesClaimed(_incentiveToken, msg.sender, _recipient, amount);
     }
 
     /// @notice Returns the state for the specified incentive campaign.
