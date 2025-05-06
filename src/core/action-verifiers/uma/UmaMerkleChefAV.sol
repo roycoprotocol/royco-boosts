@@ -16,17 +16,17 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 contract UmaMerkleChefAV is UmaMerkleOracleBase {
     using FixedPointMathLib for uint256;
 
-    /// @notice An enum representing different modifications that can be made to incentive streams for a campaign.
+    /// @notice An enumeration of modifications that can be made to incentive streams for a campaign.
     /// @custom:field INIT_STREAMS Initializes the incentives streams for a campaign and sets its initial emission rate.
     /// @custom:field INCREASE_RATE Add incentives to a stream, increasing its rate from now until the end timestamp.
     /// @custom:field DECREASE_RATE Removes incentives from a stream, decreasing its rate from now until the end timestamp.
-    enum Modifications {
+    enum Modification {
         INIT_STREAMS,
         INCREASE_RATE,
         DECREASE_RATE
     }
 
-    /// @notice Action parameters for this action verifier.
+    /// @notice Action parameters for this Action Verifier.
     /// @custom:field startTimestamp The timestamp to start streaming incentives for this campaign.
     /// @custom:field endTimestamp The timestamp to stop streaming incentives for this campaign.
     /// @custom:field avmVersion The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
@@ -137,7 +137,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
 
         // Apply the modification to streams
         _modifyIncentiveStreams(
-            Modifications.INIT_STREAMS, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
+            Modification.INIT_STREAMS, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
         );
     }
 
@@ -160,7 +160,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
+        _modifyIncentiveStreams(Modification.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
     }
 
     /// @notice Processes the removal of incentives for a given campaign.
@@ -187,7 +187,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
         (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
+        _modifyIncentiveStreams(Modification.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
     }
 
     /// @notice Processes a claim by validating the provided parameters.
@@ -291,7 +291,7 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
     /// @param _incentives The array of incentives.
     /// @param _incentiveAmounts The corresponding amounts for each incentive.
     function _modifyIncentiveStreams(
-        Modifications _modification,
+        Modification _modification,
         bytes32 _incentiveCampaignId,
         uint40 _startTimestamp,
         uint40 _endTimestamp,
@@ -302,14 +302,14 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
     {
         // Can't add/remove incentives from streams after the campaign ended
         // Can create retroactive campaigns
-        require(_modification == Modifications.INIT_STREAMS || block.timestamp < _endTimestamp, CampaignEnded());
+        require(_modification == Modification.INIT_STREAMS || block.timestamp < _endTimestamp, CampaignEnded());
 
         // Make modifications to the appropriate incentive streams
         uint256 numIncentives = _incentives.length;
         uint256[] memory updatedRates = new uint256[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
             // If creating a new campaign
-            if (_modification == Modifications.INIT_STREAMS) {
+            if (_modification == Modification.INIT_STREAMS) {
                 // Initialize the rate on creation
                 updatedRates[i] = (_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp);
                 // If adding or removing incentives from an already created campaign
@@ -324,10 +324,10 @@ contract UmaMerkleChefAV is UmaMerkleOracleBase {
                 uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
 
                 // If adding incentives
-                if (_modification == Modifications.INCREASE_RATE) {
+                if (_modification == Modification.INCREASE_RATE) {
                     // Add unstreamed incentives to what you are adding and recalculate the rate for the remaining campaign
                     updatedRates[i] = (unstreamedIncentives + _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
-                } else if (_modification == Modifications.DECREASE_RATE) {
+                } else if (_modification == Modification.DECREASE_RATE) {
                     // Check that you are only removing from unstreamed incentives
                     require(_incentiveAmounts[i] <= unstreamedIncentives, RemovalLimitExceeded());
                     // Substract what you are removing from unstreamed incentives and recalculate the rate for the remaining campaign

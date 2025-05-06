@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
+import { IncentiveLocker } from "../../IncentiveLocker.sol";
 import { ActionVerifierBase } from "../base/ActionVerifierBase.sol";
 import { RoycoPositionManager } from "./base/RoycoPositionManager.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
@@ -16,16 +17,35 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         SHORTEN_DURATION
     }
 
+    struct ActionParams {
+        uint40 startTimestamp;
+        uint40 endTimestamp;
+        Recipe depositRecipe;
+        Recipe withdrawalRecipe;
+    }
+
+    struct ClaimParams {
+        uint256 positionId;
+        address[] incentivesToClaim;
+    }
+
     constructor(address _incentiveLocker) ActionVerifierBase(_incentiveLocker) { }
 
     event IncentiveStreamsInitialized(
-        bytes32 incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint256[] incentiveAmountsOffered, uint176[] rates
+        bytes32 indexed incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint176[] rates
     );
+
+    event IncentiveStreamsUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint176[] newRates);
 
     error InvalidCampaignDuration();
     error InvalidStreamModification();
     error MustClaimFromCorrectCampaign();
+    /// @notice Error thrown when there is no claimable incentive amount.
+    error NothingToClaim();
     error StreamInitializedAlready();
+    error StreamMustBeInitialized();
+    error StreamDurationElapsed();
+    error RemovalLimitExceeded();
     error EmissionRateMustBeNonZero();
 
     /// @notice Processes incentive campaign creation by validating the provided parameters.
@@ -45,23 +65,16 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         onlyIncentiveLocker
     {
         // Decode the action params to get the initial market duration and recipes
-        (uint40 startTimestamp, uint40 endTimestamp, Recipe memory depositRecipe, Recipe memory withdrawalRecipe) =
-            abi.decode(_actionParams, (uint40, uint40, Recipe, Recipe));
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
-        // Check that the duration is valid
-        require(startTimestamp > block.timestamp && endTimestamp > startTimestamp, InvalidCampaignDuration());
-
-        // Set the market's deposit recipes
+        // Set the market's deposit and withdraw recipes in addition to the initial incentives offered
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
-        market.depositRecipe = depositRecipe;
-        market.withdrawalRecipe = withdrawalRecipe;
+        market.depositRecipe = params.depositRecipe;
+        market.withdrawalRecipe = params.withdrawalRecipe;
         market.incentives = _incentivesOffered;
 
         // Initialize the incentive stream states
-        uint176[] memory rates = _initializeIncentiveStreams(market, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
-
-        // Emit an event to signal streams being initialized
-        emit IncentiveStreamsInitialized(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered, rates);
+        _initializeIncentiveStreams(_incentiveCampaignId, market, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -100,14 +113,12 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             }
 
             // Initialize the incentive stream states
-            uint176[] memory rates = _initializeIncentiveStreams(
-                incentiveCampaignIdToMarket[_incentiveCampaignId], startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded
+            _initializeIncentiveStreams(
+                _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded
             );
-
-            // Emit an event to signal streams being initialized
-            emit IncentiveStreamsInitialized(_incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded, rates);
         } else if (modification == StreamModification.INCREASE_RATE) {
-            //
+            // Update the rates of the incentive streams to reflect the addition
+            _updateIncentiveStreamRates(true, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded);
         } else if (modification == StreamModification.EXTEND_DURATION) {
             //
         } else {
@@ -150,13 +161,13 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
         // Decode the claim params to get the position ID the AP is trying to claim incentives for in addition to the incentives to claim
-        uint256 positionId;
-        (positionId, incentives) = abi.decode(_claimParams, (uint256, address[]));
+        ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
+
         // Check that the AP is the owner of the position they are trying to claim incentives for
-        require(ownerOf(positionId) == _ap, OnlyPositionOwner());
+        require(ownerOf(params.positionId) == _ap, OnlyPositionOwner());
 
         // Get the Royco position from storage
-        RoycoPosition storage position = positionIdToPosition[positionId];
+        RoycoPosition storage position = positionIdToPosition[params.positionId];
         // Ensure that the position the AP is claiming for is for the specified campaign
         // This precludes comingling of incentives between disparate incentive campaigns in the Incentive Locker
         require(_incentiveCampaignId == position.incentiveCampaignId, MustClaimFromCorrectCampaign());
@@ -164,13 +175,31 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
         // Iterate through the incentives the AP wants to claim and account for the claim.
-        uint256 numIncentives = incentives.length;
-        incentiveAmountsOwed = new uint256[](numIncentives);
-        for (uint256 i = 0; i < numIncentives; ++i) {
-            // Set the amount owed to the incentives accumulated by this position
-            incentiveAmountsOwed[i] = _updateIncentivesForPosition(market, incentives[i], position).accumulatedByPosition;
-            // Account for the claim
-            delete position.incentiveToPositionIncentives[incentives[i]].accumulatedByPosition;
+        uint256 numIncentivesToClaim = params.incentivesToClaim.length;
+        uint256 numNonZeroIncentives = 0;
+        incentives = new address[](numIncentivesToClaim);
+        incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
+        for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
+            address incentive = params.incentivesToClaim[i];
+            // Set the amount owed to the incentives accumulated by this position since the last claim
+            uint256 unclaimedIncentiveAmount = _updateIncentivesForPosition(market, incentive, position).accumulatedByPosition;
+            // If something to claim, append it to the amounts owed array
+            if (unclaimedIncentiveAmount > 0) {
+                // Set the incentive and amount owed in the array
+                incentives[numNonZeroIncentives] = incentive;
+                incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
+                // Account for the claim
+                delete position.incentiveToPositionIncentives[incentives[i]].accumulatedByPosition;
+            }
+        }
+
+        // If nothing owed, claim is invalid
+        require(numNonZeroIncentives != 0, NothingToClaim());
+
+        // Resize arrays to the actual number of incentives owed
+        assembly ("memory-safe") {
+            mstore(incentives, numNonZeroIncentives)
+            mstore(incentiveAmountsOwed, numNonZeroIncentives)
         }
     }
 
@@ -188,13 +217,15 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     { }
 
-    /// @notice Initializes the incentive streams for a Market.
+    /// @notice Initializes the incentive streams for a liquidity market.
+    /// @param _incentiveCampaignId The incentive campaign ID corresponding to this market.
     /// @param _market A storage pointer to the Market.
     /// @param _startTimestamp The start timestamp for the incentive campaign.
     /// @param _endTimestamp The end timestamp for the incentive campaign.
     /// @param _incentives The array of incentives.
     /// @param _incentiveAmounts The corresponding amounts for each incentive.
     function _initializeIncentiveStreams(
+        bytes32 _incentiveCampaignId,
         Market storage _market,
         uint40 _startTimestamp,
         uint40 _endTimestamp,
@@ -202,11 +233,13 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint256[] memory _incentiveAmounts
     )
         internal
-        returns (uint176[] memory rates)
     {
+        // Check that the duration is valid
+        require(_startTimestamp > block.timestamp && _endTimestamp > _startTimestamp, InvalidCampaignDuration());
+
         // Initialize the incentive streams
         uint256 numIncentives = _incentives.length;
-        rates = new uint176[](numIncentives);
+        uint176[] memory rates = new uint176[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
             // Get the stream state storage pointer for this incentive
             address incentive = _incentives[i];
@@ -218,8 +251,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             // Update the stream state so that we don't lose any incentives
             _updateStreamState(_market, incentive);
 
-            // Calculate the intial emission rate for this incentive scaled up by WAD
-            rates[i] = uint176((_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp));
+            // Calculate the intial emission rate for this incentive stream scaled up by WAD
+            rates[i] = uint176(_incentiveAmounts[i].divWadDown(_endTimestamp - _startTimestamp));
             // Check that the resulting rate is non-zero
             require(rates[i] > 0, EmissionRateMustBeNonZero());
 
@@ -228,5 +261,67 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             interval.endTimestamp = _endTimestamp;
             interval.rate = rates[i];
         }
+
+        // Emit an event to signal streams being initialized
+        emit IncentiveStreamsInitialized(_incentiveCampaignId, _startTimestamp, _endTimestamp, _incentives, rates);
+    }
+
+    /// @notice Updates the rates for incentive streams in a liquidity market.
+    /// @param _increaseRate A flag indicating whether to increase or decrease the emission rate of the incentive stream.
+    /// @param _incentiveCampaignId The incentive campaign ID corresponding to this market.
+    /// @param _market A storage pointer to the Market.
+    /// @param _incentives The array of incentives.
+    /// @param _incentiveAmounts The corresponding amounts for each incentive.
+    function _updateIncentiveStreamRates(
+        bool _increaseRate,
+        bytes32 _incentiveCampaignId,
+        Market storage _market,
+        address[] memory _incentives,
+        uint256[] memory _incentiveAmounts
+    )
+        internal
+    {
+        // Modify the incentive stream rates
+        uint256 numIncentives = _incentives.length;
+        uint176[] memory updatedRates = new uint176[](numIncentives);
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Get the stream state storage pointer for this incentive
+            address incentive = _incentives[i];
+            StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
+            uint40 startTimestamp = interval.startTimestamp;
+            uint40 endTimestamp = interval.endTimestamp;
+            uint256 currentRate = interval.rate;
+
+            // Make sure that the stream isn't already initialized
+            require(currentRate != 0, StreamMustBeInitialized());
+            require(endTimestamp < block.timestamp, StreamDurationElapsed());
+
+            // Update the stream state to ensure all incentives have been accounted for so far
+            _updateStreamState(_market, incentive);
+
+            // Calculate the remaining duration for this campaign
+            uint256 remainingDuration = (block.timestamp > startTimestamp) ? (endTimestamp - block.timestamp) : (endTimestamp - startTimestamp);
+
+            if (_increaseRate) {
+                // Calculate the increase in the emission rate for this incentive stream scaled up by WAD
+                uint256 rateIncrease = _incentiveAmounts[i].divWadDown(remainingDuration);
+                updatedRates[i] = uint176(currentRate + rateIncrease);
+
+                // Update the stream state to reflect the rate increase
+                interval.rate = updatedRates[i];
+            } else {
+                // Calculate the number of unstreamed incentives and make sure that the amount to remove is lte
+                uint256 unstreamedIncentives = currentRate.mulWadDown(remainingDuration);
+                require(_incentiveAmounts[i] <= unstreamedIncentives, RemovalLimitExceeded());
+
+                // Calculate the rate after removing the incentives
+                uint256 amountAfterRemoval = unstreamedIncentives - _incentiveAmounts[i];
+                updatedRates[i] = uint176(amountAfterRemoval.divWadDown(remainingDuration));
+
+                // Update the stream state to reflect the rate decrease
+                interval.rate = updatedRates[i];
+            }
+        }
+        emit IncentiveStreamsUpdated(_incentiveCampaignId, _incentives, updatedRates);
     }
 }
