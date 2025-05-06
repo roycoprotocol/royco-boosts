@@ -35,9 +35,11 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         bytes32 indexed incentiveCampaignId, uint40 startTimestamp, uint40 endTimestamp, address[] incentivesOffered, uint176[] rates
     );
 
-    event IncentiveStreamsUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint176[] newRates);
+    event IncentiveStreamRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint176[] newRates);
 
-    error InvalidCampaignDuration();
+    event IncentiveStreamDurationsUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint176[] newRates, uint40 newEndTimestamp);
+
+    error InvalidStreamDuration();
     error InvalidStreamModification();
     error MustClaimFromCorrectCampaign();
     /// @notice Error thrown when there is no claimable incentive amount.
@@ -119,7 +121,20 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             // Update the rates of the incentive streams to reflect the addition
             _updateIncentiveStreamRates(true, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded);
         } else if (modification == StreamModification.EXTEND_DURATION) {
-            //
+            // Get the new end timestamp of the streams to extend the duration for
+            uint40 newEndTimestamp;
+            assembly ("memory-safe") {
+                // Extract the first word after the params length and modification enum
+                let word := mload(add(_additionParams, 33))
+                // Shift right so the upper 40 bits are moved to the lower 40 bits
+                // Mask the result to clear the upper 216 bits
+                newEndTimestamp := and(shr(216, word), 0xffffffffff)
+            }
+
+            // Extend the durations for the specified streams
+            _updateIncentiveStreamDurations(
+                true, newEndTimestamp, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded
+            );
         } else {
             revert InvalidStreamModification();
         }
@@ -141,7 +156,34 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         external
         override
         onlyIncentiveLocker
-    { }
+    {
+        // First byte of the addition params contains the modification to make on addition
+        StreamModification modification = StreamModification(uint8(_removalParams[0]));
+
+        if (modification == StreamModification.DECREASE_RATE) {
+            // Update the rates of the incentive streams to reflect the addition
+            _updateIncentiveStreamRates(
+                false, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved
+            );
+        } else if (modification == StreamModification.SHORTEN_DURATION) {
+            // Get the new end timestamp of the streams to extend the duration for
+            uint40 newEndTimestamp;
+            assembly ("memory-safe") {
+                // Extract the first word after the params length and modification enum
+                let word := mload(add(_removalParams, 33))
+                // Shift right so the upper 40 bits are moved to the lower 40 bits
+                // Mask the result to clear the upper 216 bits
+                newEndTimestamp := and(shr(216, word), 0xffffffffff)
+            }
+
+            // Extend the durations for the specified streams
+            _updateIncentiveStreamDurations(
+                false, newEndTimestamp, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved
+            );
+        } else {
+            revert InvalidStreamModification();
+        }
+    }
 
     /// @notice Processes a claim by validating the provided parameters.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign to claim incentives from.
@@ -234,7 +276,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         internal
     {
         // Check that the duration is valid
-        require(_startTimestamp > block.timestamp && _endTimestamp > _startTimestamp, InvalidCampaignDuration());
+        require(_endTimestamp > block.timestamp && _endTimestamp > _startTimestamp, InvalidStreamDuration());
 
         // Initialize the incentive streams
         uint256 numIncentives = _incentives.length;
@@ -245,7 +287,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
 
             // Make sure that the stream isn't already initialized
-            require(interval.rate == 0, StreamInitializedAlready());
+            require(interval.endTimestamp != 0, StreamInitializedAlready());
 
             // Update the stream state so that we don't lose any incentives
             _updateStreamState(_market, incentive);
@@ -289,10 +331,9 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
             uint40 startTimestamp = interval.startTimestamp;
             uint40 endTimestamp = interval.endTimestamp;
-            uint256 currentRate = interval.rate;
 
-            // Make sure that the stream is still actively emitting incentives
-            require(currentRate != 0 && endTimestamp < block.timestamp, StreamMustBeActive());
+            // Make sure that the stream is still active
+            require(endTimestamp > block.timestamp, StreamMustBeActive());
 
             // Update the stream state to ensure all incentives have been accounted for so far
             _updateStreamState(_market, incentive);
@@ -300,18 +341,81 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             // Calculate the remaining duration for this campaign
             uint256 remainingDuration = (block.timestamp > startTimestamp) ? (endTimestamp - block.timestamp) : (endTimestamp - startTimestamp);
             // Calculate the number of unstreamed incentives based on the current rate
-            uint256 unstreamedIncentives = currentRate.mulWadDown(remainingDuration);
+            uint256 unstreamedIncentives = remainingDuration.mulWadDown(interval.rate);
 
-            // Calculate the rate after adding incentives
+            // Calculate the unstreamed incentives after the modification
             // Will revert if trying to decrease the rate by more incentives than are unstreamed
-            uint256 unstreamedAfterModification = _increaseRate ? (unstreamedIncentives + _incentiveAmounts[i]) : (unstreamedIncentives - _incentiveAmounts[i]);
-            updatedRates[i] = uint176(unstreamedAfterModification.divWadDown(remainingDuration));
+            unstreamedIncentives = _increaseRate ? (unstreamedIncentives + _incentiveAmounts[i]) : (unstreamedIncentives - _incentiveAmounts[i]);
+            // Calculate the rate after the modification
+            updatedRates[i] = uint176(unstreamedIncentives.divWadDown(remainingDuration));
 
             // Update the stream state to reflect the updated rate
             interval.rate = updatedRates[i];
         }
 
-        // Emit an event with the updated rates after adding or removing incentives
-        emit IncentiveStreamsUpdated(_incentiveCampaignId, _incentives, updatedRates);
+        // Emit an event with the updated rates after the modifications.
+        emit IncentiveStreamRatesUpdated(_incentiveCampaignId, _incentives, updatedRates);
+    }
+
+    /// @notice Updates the rates for incentive streams in a liquidity market.
+    /// @param _extendDuration A flag indicating whether to extend or shorten the stream durations.
+    /// @param _newEndTimestamp The new end timestamps of the stream durations.
+    /// @param _incentiveCampaignId The incentive campaign ID corresponding to this market.
+    /// @param _market A storage pointer to the Market.
+    /// @param _incentives The array of incentives.
+    /// @param _incentiveAmounts The corresponding amounts for each incentive.
+    function _updateIncentiveStreamDurations(
+        bool _extendDuration,
+        uint40 _newEndTimestamp,
+        bytes32 _incentiveCampaignId,
+        Market storage _market,
+        address[] memory _incentives,
+        uint256[] memory _incentiveAmounts
+    )
+        internal
+    {
+        // Modify the incentive stream rates
+        uint256 numIncentives = _incentives.length;
+        uint176[] memory updatedRates = new uint176[](numIncentives);
+        for (uint256 i = 0; i < numIncentives; ++i) {
+            // Get the stream state for this incentive
+            address incentive = _incentives[i];
+            StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
+            uint40 startTimestamp = interval.startTimestamp;
+            uint40 endTimestamp = interval.endTimestamp;
+
+            // Make sure that the stream is still active
+            require(endTimestamp > block.timestamp, StreamMustBeActive());
+
+            // Update the stream state to ensure all incentives have been accounted for so far
+            _updateStreamState(_market, incentive);
+
+            // Calculate the remaining duration for this campaign
+            uint256 remainingDuration = (block.timestamp > startTimestamp) ? (endTimestamp - block.timestamp) : (endTimestamp - startTimestamp);
+            // Calculate the number of unstreamed incentives based on the current rate
+            uint256 unstreamedIncentives = remainingDuration.mulWadDown(interval.rate);
+
+            if (_extendDuration) {
+                // Make sure that the new end timestamp is gt the current end timestamp
+                require(_newEndTimestamp > endTimestamp, InvalidStreamDuration());
+            } else {
+                // Make sure that the new end timestamp is lt the current end timestamp and gtw the current timestamp
+                require(_newEndTimestamp < endTimestamp && _newEndTimestamp >= block.timestamp, InvalidStreamDuration());
+            }
+
+            // Calculate the remaining duration after the modification
+            remainingDuration = _newEndTimestamp - block.timestamp;
+            // Calculate the remaining incentives after the modification
+            unstreamedIncentives = _extendDuration ? (unstreamedIncentives + _incentiveAmounts[i]) : (unstreamedIncentives - _incentiveAmounts[i]);
+            // Calculate the rate after the modification
+            updatedRates[i] = uint176(unstreamedIncentives.divWadDown(remainingDuration));
+
+            // Update the stream state to reflect the updated rate
+            interval.endTimestamp = _newEndTimestamp;
+            interval.rate = updatedRates[i];
+        }
+
+        // Emit an event with the updated rates and end timestamp after the modification
+        emit IncentiveStreamDurationsUpdated(_incentiveCampaignId, _incentives, updatedRates, _newEndTimestamp);
     }
 }
