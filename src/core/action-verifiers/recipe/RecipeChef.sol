@@ -43,8 +43,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     /// @notice Error thrown when there is no claimable incentive amount.
     error NothingToClaim();
     error StreamInitializedAlready();
-    error StreamMustBeInitialized();
-    error StreamDurationElapsed();
+    error StreamMustBeActive();
     error RemovalLimitExceeded();
     error EmissionRateMustBeNonZero();
 
@@ -292,33 +291,27 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             uint40 endTimestamp = interval.endTimestamp;
             uint256 currentRate = interval.rate;
 
-            // Make sure that the stream isn't already initialized
-            require(currentRate != 0, StreamMustBeInitialized());
-            require(endTimestamp < block.timestamp, StreamDurationElapsed());
+            // Make sure that the stream is still actively emitting incentives
+            require(currentRate != 0 && endTimestamp < block.timestamp, StreamMustBeActive());
 
             // Update the stream state to ensure all incentives have been accounted for so far
             _updateStreamState(_market, incentive);
 
             // Calculate the remaining duration for this campaign
             uint256 remainingDuration = (block.timestamp > startTimestamp) ? (endTimestamp - block.timestamp) : (endTimestamp - startTimestamp);
+            // Calculate the number of unstreamed incentives based on the current rate
+            uint256 unstreamedIncentives = currentRate.mulWadDown(remainingDuration);
 
-            if (_increaseRate) {
-                // Calculate the increase in the emission rate for this incentive stream scaled up by WAD
-                uint256 rateIncrease = _incentiveAmounts[i].divWadDown(remainingDuration);
-                updatedRates[i] = uint176(currentRate + rateIncrease);
-            } else {
-                // Calculate the number of unstreamed incentives and make sure that the amount to remove is lte
-                uint256 unstreamedIncentives = currentRate.mulWadDown(remainingDuration);
-                require(_incentiveAmounts[i] <= unstreamedIncentives, RemovalLimitExceeded());
-
-                // Calculate the rate after removing the incentives
-                uint256 amountAfterRemoval = unstreamedIncentives - _incentiveAmounts[i];
-                updatedRates[i] = uint176(amountAfterRemoval.divWadDown(remainingDuration));
-            }
+            // Calculate the rate after adding incentives
+            // Will revert if trying to decrease the rate by more incentives than are unstreamed
+            uint256 unstreamedAfterModification = _increaseRate ? (unstreamedIncentives + _incentiveAmounts[i]) : (unstreamedIncentives - _incentiveAmounts[i]);
+            updatedRates[i] = uint176(unstreamedAfterModification.divWadDown(remainingDuration));
 
             // Update the stream state to reflect the updated rate
             interval.rate = updatedRates[i];
         }
+
+        // Emit an event with the updated rates after adding or removing incentives
         emit IncentiveStreamsUpdated(_incentiveCampaignId, _incentives, updatedRates);
     }
 }
