@@ -306,9 +306,6 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
                 // Calculate the increase in the emission rate for this incentive stream scaled up by WAD
                 uint256 rateIncrease = _incentiveAmounts[i].divWadDown(remainingDuration);
                 updatedRates[i] = uint176(currentRate + rateIncrease);
-
-                // Update the stream state to reflect the rate increase
-                interval.rate = updatedRates[i];
             } else {
                 // Calculate the number of unstreamed incentives and make sure that the amount to remove is lte
                 uint256 unstreamedIncentives = currentRate.mulWadDown(remainingDuration);
@@ -317,10 +314,10 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
                 // Calculate the rate after removing the incentives
                 uint256 amountAfterRemoval = unstreamedIncentives - _incentiveAmounts[i];
                 updatedRates[i] = uint176(amountAfterRemoval.divWadDown(remainingDuration));
-
-                // Update the stream state to reflect the rate decrease
-                interval.rate = updatedRates[i];
             }
+
+            // Update the stream state to reflect the updated rate
+            interval.rate = updatedRates[i];
         }
         emit IncentiveStreamsUpdated(_incentiveCampaignId, _incentives, updatedRates);
     }
