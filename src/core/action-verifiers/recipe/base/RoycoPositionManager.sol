@@ -42,6 +42,7 @@ abstract contract RoycoPositionManager is ERC721 {
     /// @custom:field totalLiquidity - The total amount of liquidity units currently in this market. Used to update the accumulator for incentive streams.
     /// @custom:mapping incentiveToStreamInterval - A mapping from an incentive address to its stream interval.
     /// @custom:mapping incentiveToStreamState - A mapping from an incentive address to its stream state.
+    /// @custom:mapping incentiveToIP - A mapping from an incentive address to the IP that created the stream. Only this IP can make stream modifications.
     struct Market {
         Recipe depositRecipe;
         Recipe withdrawalRecipe;
@@ -49,6 +50,7 @@ abstract contract RoycoPositionManager is ERC721 {
         address[] incentives;
         mapping(address incentive => StreamInterval interval) incentiveToStreamInterval;
         mapping(address incentive => StreamState state) incentiveToStreamState;
+        mapping(address incentive => address ip) incentiveToIP;
     }
 
     /// @notice PositionIncentives - A struct representing the incentives accumulated by this position for an incentive stream.

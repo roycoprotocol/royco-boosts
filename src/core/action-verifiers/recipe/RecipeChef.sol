@@ -45,6 +45,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
     /// @notice Error thrown when there is no claimable incentive amount.
     error NothingToClaim();
     error StreamInitializedAlready();
+    error OnlyStreamIP();
     error StreamMustBeActive();
     error RemovalLimitExceeded();
     error EmissionRateMustBeNonZero();
@@ -59,7 +60,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         address[] memory _incentivesOffered,
         uint256[] memory _incentiveAmountsOffered,
         bytes memory _actionParams,
-        address /*_ip*/
+        address _ip
     )
         external
         override
@@ -75,7 +76,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         market.incentives = _incentivesOffered;
 
         // Initialize the incentive stream states
-        _initializeIncentiveStreams(_incentiveCampaignId, market, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+        _initializeIncentiveStreams(_incentiveCampaignId, market, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered, _ip);
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -88,7 +89,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         address[] memory _incentivesAdded,
         uint256[] memory _incentiveAmountsAdded,
         bytes memory _additionParams,
-        address /*_ip*/
+        address _ip
     )
         external
         override
@@ -115,11 +116,19 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
             // Initialize the incentive stream states
             _initializeIncentiveStreams(
-                _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded
+                _incentiveCampaignId,
+                incentiveCampaignIdToMarket[_incentiveCampaignId],
+                startTimestamp,
+                endTimestamp,
+                _incentivesAdded,
+                _incentiveAmountsAdded,
+                _ip
             );
         } else if (modification == StreamModification.INCREASE_RATE) {
             // Update the rates of the incentive streams to reflect the addition
-            _updateIncentiveStreamRates(true, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded);
+            _updateIncentiveStreamRates(
+                true, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded, _ip
+            );
         } else if (modification == StreamModification.EXTEND_DURATION) {
             // Get the new end timestamp of the streams to extend the duration for
             uint40 newEndTimestamp;
@@ -133,7 +142,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
             // Extend the durations for the specified streams
             _updateIncentiveStreamDurations(
-                true, newEndTimestamp, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded
+                true, newEndTimestamp, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesAdded, _incentiveAmountsAdded, _ip
             );
         } else {
             revert InvalidStreamModification();
@@ -157,13 +166,13 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         override
         onlyIncentiveLocker
     {
-        // First byte of the addition params contains the modification to make on addition
+        // First byte of the addition params contains the modification to make on removal
         StreamModification modification = StreamModification(uint8(_removalParams[0]));
 
         if (modification == StreamModification.DECREASE_RATE) {
             // Update the rates of the incentive streams to reflect the addition
             _updateIncentiveStreamRates(
-                false, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved
+                false, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved, _ip
             );
         } else if (modification == StreamModification.SHORTEN_DURATION) {
             // Get the new end timestamp of the streams to extend the duration for
@@ -176,9 +185,15 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
                 newEndTimestamp := and(shr(216, word), 0xffffffffff)
             }
 
-            // Extend the durations for the specified streams
+            // Shorten the durations for the specified streams
             _updateIncentiveStreamDurations(
-                false, newEndTimestamp, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved
+                false,
+                newEndTimestamp,
+                _incentiveCampaignId,
+                incentiveCampaignIdToMarket[_incentiveCampaignId],
+                _incentivesRemoved,
+                _incentiveAmountsRemoved,
+                _ip
             );
         } else {
             revert InvalidStreamModification();
@@ -271,7 +286,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint40 _startTimestamp,
         uint40 _endTimestamp,
         address[] memory _incentives,
-        uint256[] memory _incentiveAmounts
+        uint256[] memory _incentiveAmounts,
+        address _ip
     )
         internal
     {
@@ -288,6 +304,9 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
             // Make sure that the stream isn't already initialized
             require(interval.endTimestamp != 0, StreamInitializedAlready());
+
+            // Set this IP as the manager of this incentive stream
+            _market.incentiveToIP[incentive] = _ip;
 
             // Update the stream state so that we don't lose any incentives
             _updateStreamState(_market, incentive);
@@ -318,7 +337,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         bytes32 _incentiveCampaignId,
         Market storage _market,
         address[] memory _incentives,
-        uint256[] memory _incentiveAmounts
+        uint256[] memory _incentiveAmounts,
+        address _ip
     )
         internal
     {
@@ -326,8 +346,11 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint256 numIncentives = _incentives.length;
         uint176[] memory updatedRates = new uint176[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
-            // Get the stream state storage pointer for this incentive
             address incentive = _incentives[i];
+            // Ensure that the IP modifying the stream is the one who created the stream
+            require(_market.incentiveToIP[incentive] == _ip, OnlyStreamIP());
+
+            // Get the stream state storage pointer for this incentive
             StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
             uint40 startTimestamp = interval.startTimestamp;
             uint40 endTimestamp = interval.endTimestamp;
@@ -370,7 +393,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         bytes32 _incentiveCampaignId,
         Market storage _market,
         address[] memory _incentives,
-        uint256[] memory _incentiveAmounts
+        uint256[] memory _incentiveAmounts,
+        address _ip
     )
         internal
     {
@@ -378,8 +402,11 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint256 numIncentives = _incentives.length;
         uint176[] memory updatedRates = new uint176[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
-            // Get the stream state for this incentive
             address incentive = _incentives[i];
+            // Ensure that the IP modifying the stream is the one who created the stream
+            require(_market.incentiveToIP[incentive] == _ip, OnlyStreamIP());
+
+            // Get the stream state for this incentive
             StreamInterval storage interval = _market.incentiveToStreamInterval[incentive];
             uint40 startTimestamp = interval.startTimestamp;
             uint40 endTimestamp = interval.endTimestamp;
@@ -405,7 +432,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
             // Calculate the remaining duration after the modification
             remainingDuration = _newEndTimestamp - block.timestamp;
-            // Calculate the remaining incentives after the modification
+            // Calculate the unstreamed incentives after the modification
+            // Will revert if trying to decrease the rate by more incentives than are unstreamed
             unstreamedIncentives = _extendDuration ? (unstreamedIncentives + _incentiveAmounts[i]) : (unstreamedIncentives - _incentiveAmounts[i]);
             // Calculate the rate after the modification
             updatedRates[i] = uint176(unstreamedIncentives.divWadDown(remainingDuration));
