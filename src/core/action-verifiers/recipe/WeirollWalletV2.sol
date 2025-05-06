@@ -22,8 +22,12 @@ contract WeirollWalletV2 is VM {
         bytes memory immutableArgs = address(this).fetchCloneArgs();
         assembly ("memory-safe") {
             // Load the first word of the immutable args
-            // Shift right by 96 bits to place the upper 20 bytes in the lower 20 bytes for a clean cast
-            recipeChef := shr(96, mload(add(immutableArgs, 32)))
+            // Shift right by 96 bits to place the upper 20 bytes in the lower 20 bytes
+            // Mask to preserve only the lower 20 bytes
+            recipeChef := and(
+                shr(96, mload(add(immutableArgs, 32))),
+                0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF        
+            )
         }
     }
 

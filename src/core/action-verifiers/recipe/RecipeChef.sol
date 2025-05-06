@@ -101,18 +101,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         // If the IP wants to initialize new streams for incentives that don't exist
         if (modification == StreamModification.INIT_STREAM) {
             // Get the start and end timestamps of the new streams
-            uint40 startTimestamp;
-            uint40 endTimestamp;
-            assembly ("memory-safe") {
-                // Extract the first word after the params length and modification enum
-                let word := mload(add(_additionParams, 33))
-                // Shift right so the upper 40 bits are moved to the lower 40 bits
-                // Mask the result to clear the upper 216 bits
-                startTimestamp := and(shr(216, word), 0xffffffffff)
-                // Shift right so the second most upper 40 bits are moved to the lower 40 bits
-                // Mask the result to clear the upper 176 bits
-                endTimestamp := and(shr(176, word), 0xffffffffff)
-            }
+            (uint40 startTimestamp, uint40 endTimestamp) = _decodeStreamDuration(_additionParams);
 
             // Initialize the incentive stream states
             _initializeIncentiveStreams(
@@ -131,14 +120,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
             );
         } else if (modification == StreamModification.EXTEND_DURATION) {
             // Get the new end timestamp of the streams to extend the duration for
-            uint40 newEndTimestamp;
-            assembly ("memory-safe") {
-                // Extract the first word after the params length and modification enum
-                let word := mload(add(_additionParams, 33))
-                // Shift right so the upper 40 bits are moved to the lower 40 bits
-                // Mask the result to clear the upper 216 bits
-                newEndTimestamp := and(shr(216, word), 0xffffffffff)
-            }
+            uint40 newEndTimestamp = _decodeNewEndTimestamp(_additionParams);
 
             // Extend the durations for the specified streams
             _updateIncentiveStreamDurations(
@@ -175,15 +157,8 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
                 false, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved, _ip
             );
         } else if (modification == StreamModification.SHORTEN_DURATION) {
-            // Get the new end timestamp of the streams to extend the duration for
-            uint40 newEndTimestamp;
-            assembly ("memory-safe") {
-                // Extract the first word after the params length and modification enum
-                let word := mload(add(_removalParams, 33))
-                // Shift right so the upper 40 bits are moved to the lower 40 bits
-                // Mask the result to clear the upper 216 bits
-                newEndTimestamp := and(shr(216, word), 0xffffffffff)
-            }
+            // Get the new end timestamp of the streams to shorten the duration for
+            uint40 newEndTimestamp = _decodeNewEndTimestamp(_removalParams);
 
             // Shorten the durations for the specified streams
             _updateIncentiveStreamDurations(
@@ -445,5 +420,35 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
 
         // Emit an event with the updated rates and end timestamp after the modification
         emit IncentiveStreamDurationsUpdated(_incentiveCampaignId, _incentives, updatedRates, _newEndTimestamp);
+    }
+
+    /// @dev Extracts the packed start and end timestamps (duration) from _params.
+    /// @param _params Bytes passed to processIncentivesAdded.
+    /// @return startTimestamp The stream’s start timestamp.
+    /// @return endTimestamp   The stream’s end timestamp.
+    function _decodeStreamDuration(bytes memory _params) internal pure returns (uint40 startTimestamp, uint40 endTimestamp) {
+        assembly ("memory-safe") {
+            // Extract the first word after the params length and modification enum
+            let word := mload(add(_params, 33))
+            // Shift right so the upper 40 bits are moved to the lower 40 bits
+            // Mask the result to clear the upper 216 bits
+            startTimestamp := and(shr(216, word), 0xffffffffff)
+            // Shift right so the second most upper 40 bits are moved to the lower 40 bits
+            // Mask the result to clear the upper 176 bits
+            endTimestamp := and(shr(176, word), 0xffffffffff)
+        }
+    }
+
+    /// @dev Extracts the new end timestamp  _params.
+    /// @param _params Bytes passed to processIncentivesAdded and processIncentivesRemoved.
+    /// @return newEndTimestamp The updated stream end timestamp.
+    function _decodeNewEndTimestamp(bytes memory _params) internal pure returns (uint40 newEndTimestamp) {
+        assembly ("memory-safe") {
+            // Extract the first word after the params length and modification enum
+            let word := mload(add(_params, 33))
+            // Shift right so the upper 40 bits are moved to the lower 40 bits
+            // Mask the result to clear the upper 216 bits
+            newEndTimestamp := and(shr(216, word), 0xffffffffff)
+        }
     }
 }
