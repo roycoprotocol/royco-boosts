@@ -93,9 +93,9 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionMinted(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, address weirollWallet, uint256 liquidity);
 
-    event PositionAddedLiquidity(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityAdded);
+    event PositionLiquidityIncreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityAdded);
 
-    event PositionRemovedLiquidity(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
+    event PositionLiquidityDecreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
 
     event PositionBurned(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap);
 
@@ -170,7 +170,7 @@ abstract contract RoycoPositionManager is ERC721 {
         emit PositionMinted(_incentiveCampaignId, positionId, msg.sender, weirollWallet, liquidity);
     }
 
-    function addLiquidity(uint256 _positionId, bytes calldata _executionParams) external payable onlyPositionOwner(_positionId) {
+    function increaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external payable onlyPositionOwner(_positionId) {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -193,10 +193,10 @@ abstract contract RoycoPositionManager is ERC721 {
         market.totalLiquidity += liquidityAdded;
 
         // Emit an event to signal the position adding liquidity
-        emit PositionAddedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidityAdded);
+        emit PositionLiquidityIncreased(incentiveCampaignId, _positionId, msg.sender, liquidityAdded);
     }
 
-    function removeLiquidty(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
+    function decreaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -220,7 +220,7 @@ abstract contract RoycoPositionManager is ERC721 {
         market.totalLiquidity -= liquidityRemoved;
 
         // Emit an event to signal the position removing liquidity
-        emit PositionRemovedLiquidity(incentiveCampaignId, _positionId, msg.sender, liquidityRemoved);
+        emit PositionLiquidityDecreased(incentiveCampaignId, _positionId, msg.sender, liquidityRemoved);
     }
 
     function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {

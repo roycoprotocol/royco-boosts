@@ -148,11 +148,11 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         override
         onlyIncentiveLocker
     {
-        // First byte of the addition params contains the modification to make on removal
+        // First byte of the removal params contains the modification to make on removal
         StreamModification modification = StreamModification(uint8(_removalParams[0]));
 
         if (modification == StreamModification.DECREASE_RATE) {
-            // Update the rates of the incentive streams to reflect the addition
+            // Update the rates of the incentive streams to reflect the removal
             _updateIncentiveStreamRates(
                 false, _incentiveCampaignId, incentiveCampaignIdToMarket[_incentiveCampaignId], _incentivesRemoved, _incentiveAmountsRemoved, _ip
             );
