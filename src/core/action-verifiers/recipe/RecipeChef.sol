@@ -22,6 +22,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         uint40 endTimestamp;
         Recipe depositRecipe;
         Recipe withdrawalRecipe;
+        Recipe liquidityGetter;
     }
 
     struct ClaimParams {
@@ -73,6 +74,7 @@ contract RecipeChef is ActionVerifierBase, RoycoPositionManager {
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
         market.depositRecipe = params.depositRecipe;
         market.withdrawalRecipe = params.withdrawalRecipe;
+        market.liquidityGetter = params.liquidityGetter;
         market.incentives = _incentivesOffered;
 
         // Initialize the incentive stream states

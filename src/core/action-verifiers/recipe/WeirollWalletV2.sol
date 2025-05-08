@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import { VM } from "../../../../lib/enso-weiroll/contracts/VM.sol";
 import { Clones } from "../../../../lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
+import {RoycoPositionManager} from "./base/RoycoPositionManager.sol";
 
 /// @title WeirollWalletV2
 /// @notice WeirollWalletV2 implementation contract.
@@ -48,22 +49,18 @@ contract WeirollWalletV2 is VM {
     }
 
 
-    /// @notice Execute the Weiroll VM with the given commands.
+    /// @notice Execute the Weiroll Recipe in the Weiroll VM with the given parameters.
     /// @param _ap The address of the ActionProvider
-    /// @param _commands The commands to be executed by the Weiroll VM.
-    /// @param _state The state of the Weiroll VM when executing the commands.
-    /// @param _executionParams Runtime params to be used when executing the recipe.
+    /// @param _recipe The Weiroll Recipe to be executed by the Weiroll VM.
     /// @param _executionParams Runtime params to be used when executing the recipe.
     function executeWeirollRecipe(
         address _ap,
-        bytes32[] calldata _commands,
-        bytes[] calldata _state,
+        RoycoPositionManager.Recipe calldata _recipe,
         bytes calldata _executionParams
     )
-        public
+        external
         payable
         onlyRecipeChef
-        returns (uint256 liquidity)
     {
         // Set the action provider address for the Weiroll recipe to read
         actionProvider = _ap;
@@ -72,12 +69,26 @@ contract WeirollWalletV2 is VM {
         executionParams = _executionParams;
 
         // Execute the Weiroll Recipe in the VM.
-        bytes[] memory returnData = _execute(_commands, _state);
-        // The last element of the resulting state array should hold the liquidity deposited/withdrawn.
-        liquidity = uint256(bytes32(returnData[returnData.length - 1]));
+        _execute(_recipe.weirollCommands, _recipe.weirollState);
 
         // Delete the execution params for a gas refund.
         delete executionParams;
+    }
+
+    /// @notice Execute the liquidity getter recipe in the VM and return the liquidity units held.
+    /// @param _liquidityGetter The liquidity getter recipe (commands and state) to be executed by the Weiroll VM.
+    /// @return liquidity The liquidity units held by this Royco position's Weiroll Wallet.
+    function getPositionLiquidity(
+        RoycoPositionManager.Recipe calldata _liquidityGetter
+    )
+        external
+        onlyRecipeChef
+        returns (uint256 liquidity)
+    {
+        // Execute the Weiroll Recipe in the VM.
+        bytes[] memory returnData = _execute(_liquidityGetter.weirollCommands, _liquidityGetter.weirollState);
+        // The last element of the resulting state array should hold the liquidity units existing in this wallet.
+        liquidity = uint256(bytes32(returnData[returnData.length - 1]));
     }
 
     /// @notice Let the Weiroll Wallet receive ether directly if needed
