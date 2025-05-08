@@ -19,6 +19,8 @@ contract WeirollWalletV2 is VM {
     /// @dev The address is set to the AP executing the recipe.
     address transient public actionProvider;
 
+    error RawExecutionFailed();
+
     function getRecipeChef() public view returns (address recipeChef) {
         bytes memory immutableArgs = address(this).fetchCloneArgs();
         assembly ("memory-safe") {
@@ -61,6 +63,8 @@ contract WeirollWalletV2 is VM {
         external
         payable
         onlyRecipeChef
+        returns
+        (bytes[] memory result)
     {
         // Set the action provider address for the Weiroll recipe to read
         actionProvider = _ap;
@@ -69,7 +73,7 @@ contract WeirollWalletV2 is VM {
         executionParams = _executionParams;
 
         // Execute the Weiroll Recipe in the VM.
-        _execute(_recipe.weirollCommands, _recipe.weirollState);
+        result =_execute(_recipe.weirollCommands, _recipe.weirollState);
 
         // Delete the execution params for a gas refund.
         delete executionParams;
@@ -102,12 +106,24 @@ contract WeirollWalletV2 is VM {
         external
         payable
         onlyRecipeChef
+        returns
+        (bytes[] memory)
     {
         // Set the action provider address for the Weiroll recipe to read
         actionProvider = _ap;
 
         // Execute the Weiroll Recipe in the VM.
-        _execute(_recipe.weirollCommands, _recipe.weirollState);
+        return _execute(_recipe.weirollCommands, _recipe.weirollState);
+    }
+
+    /// @notice Execute a generic call to another contract.
+    /// @param to The address to call
+    /// @param data The data to pass along with the call
+    function execute(address to, bytes memory data) external payable onlyRecipeChef returns (bytes memory result) {
+        // Execute the call.
+        bool success;
+        (success, result) = to.call{ value: msg.value }(data);
+        require(success, RawExecutionFailed());
     }
 
     /// @notice Let the Weiroll Wallet receive ether directly if needed

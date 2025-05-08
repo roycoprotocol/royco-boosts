@@ -118,7 +118,14 @@ abstract contract RoycoPositionManager is ERC721 {
         WEIROLL_WALLET_V2_IMPLEMENTATION = address(new WeirollWalletV2());
     }
 
-    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external payable returns (uint256 positionId, address payable weirollWallet) {
+    function mint(
+        bytes32 _incentiveCampaignId,
+        bytes calldata _executionParams
+    )
+        external
+        payable
+        returns (uint256 positionId, address payable weirollWallet, uint256 liquidity, bytes[] memory result)
+    {
         // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
 
@@ -142,17 +149,25 @@ abstract contract RoycoPositionManager is ERC721 {
         _updateIncentivesForPosition(market, position);
 
         // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
-        WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
-        uint256 resultingLiquidity = _updatePositionLiquidity(positionId, position, 0, weirollWallet, market);
-        require(resultingLiquidity > 0, LiquidityIncreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(positionId, position, 0, weirollWallet, market);
+        require(liquidity > 0, LiquidityIncreaseMustBeNonZero());
 
         // Mints an NFT to the AP representing their Royco position
         _safeMint(msg.sender, positionId);
     }
 
-    function increaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external payable onlyPositionOwner(_positionId) {
+    function increaseLiquidity(
+        uint256 _positionId,
+        bytes calldata _executionParams
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -165,14 +180,21 @@ abstract contract RoycoPositionManager is ERC721 {
         // Execute the Deposit Weiroll Recipe through theis position's Weiroll Wallet
         uint256 initialLiquidity = position.liquidity;
         address payable weirollWallet = payable(position.weirollWallet);
-        WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
-        uint256 resultingLiquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
-        require(resultingLiquidity > initialLiquidity, LiquidityIncreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+        require(liquidity > initialLiquidity, LiquidityIncreaseMustBeNonZero());
     }
 
-    function decreaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
+    function decreaseLiquidity(
+        uint256 _positionId,
+        bytes calldata _executionParams
+    )
+        external
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -185,11 +207,11 @@ abstract contract RoycoPositionManager is ERC721 {
         // Execute the withdrawal Weiroll Recipe through theis position's Weiroll Wallet
         uint256 initialLiquidity = position.liquidity;
         address payable weirollWallet = payable(position.weirollWallet);
-        WeirollWalletV2(weirollWallet).executeWeirollRecipe(msg.sender, market.withdrawalRecipe, _executionParams);
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe(msg.sender, market.withdrawalRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the withdrawal recipe
-        uint256 resultingLiquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
-        require(resultingLiquidity < initialLiquidity, LiquidityDecreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+        require(liquidity < initialLiquidity, LiquidityDecreaseMustBeNonZero());
     }
 
     function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {
@@ -227,7 +249,15 @@ abstract contract RoycoPositionManager is ERC721 {
         emit PositionBurned(_positionId, msg.sender);
     }
 
-    function executeCustomWeirollRecipe(uint256 _positionId, Recipe calldata _recipe) external onlyPositionOwner(_positionId) {
+    function executeCustomWeirollRecipe(
+        uint256 _positionId,
+        Recipe calldata _recipe
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
@@ -242,10 +272,40 @@ abstract contract RoycoPositionManager is ERC721 {
         // Execute the custom Weiroll Recipe through this position's Weiroll Wallet
         uint256 initialLiquidity = position.liquidity;
         address payable weirollWallet = payable(position.weirollWallet);
-        WeirollWalletV2(weirollWallet).executeCustomWeirollRecipe(msg.sender, _recipe);
+        result = WeirollWalletV2(weirollWallet).executeCustomWeirollRecipe{ value: msg.value }(msg.sender, _recipe);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
-        _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+    }
+
+    function execute(
+        uint256 _positionId,
+        address _to,
+        bytes memory _data
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes memory result)
+    {
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[_positionId];
+
+        // Cache the incentive campaign ID
+        bytes32 incentiveCampaignId = position.incentiveCampaignId;
+        // Get the liquidity market from storage
+        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+
+        // Update the incentives accumulated for this position in addition to all stream states for its market
+        _updateIncentivesForPosition(market, position);
+
+        // Execute the custom Weiroll Recipe through this position's Weiroll Wallet
+        uint256 initialLiquidity = position.liquidity;
+        address payable weirollWallet = payable(position.weirollWallet);
+        result = WeirollWalletV2(weirollWallet).execute{ value: msg.value }(_to, _data);
+
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
+        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
     }
 
     /// @notice Computes the address of an AP's next Weiroll Wallet.
