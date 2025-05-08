@@ -91,6 +91,25 @@ contract WeirollWalletV2 is VM {
         liquidity = uint256(bytes32(returnData[returnData.length - 1]));
     }
 
+    /// @notice Execute a custom Weiroll Recipe in the Weiroll VM with the given parameters.
+    /// @notice Callable through `executeCustomWeirollRecipe()` in the Royco Position Manager. 
+    /// @param _ap The address of the ActionProvider
+    /// @param _recipe The Weiroll Recipe to be executed by the Weiroll VM.
+    function executeCustomWeirollRecipe(
+        address _ap,
+        RoycoPositionManager.Recipe calldata _recipe
+    )
+        external
+        payable
+        onlyRecipeChef
+    {
+        // Set the action provider address for the Weiroll recipe to read
+        actionProvider = _ap;
+
+        // Execute the Weiroll Recipe in the VM.
+        _execute(_recipe.weirollCommands, _recipe.weirollState);
+    }
+
     /// @notice Let the Weiroll Wallet receive ether directly if needed
     receive() external payable { }
     /// @notice Also allow a fallback with no logic if erroneous data is provided
