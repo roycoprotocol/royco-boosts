@@ -94,13 +94,14 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionMinted(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, address weirollWallet, uint256 liquidity);
 
-    event PositionLiquidityIncreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityAdded);
+    event PositionLiquidityIncreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidity);
 
-    event PositionLiquidityDecreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
+    event PositionLiquidityDecreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidity);
 
     event PositionBurned(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap);
 
     error LiquidityIncreasedMustBeNonZero();
+    error LiquidityDecreaseMustBeNonZero();
     error OnlyPositionOwner();
     error MustRemoveAllLiquidityToBurn();
     error MustClaimIncentivesToBurn(address incentive);
@@ -189,7 +190,7 @@ abstract contract RoycoPositionManager is ERC721 {
         market.totalLiquidity += liquidityIncrease;
 
         // Emit an event to signal the position adding liquidity
-        emit PositionLiquidityIncreased(incentiveCampaignId, _positionId, msg.sender, liquidityIncrease);
+        emit PositionLiquidityIncreased(incentiveCampaignId, _positionId, msg.sender, resultingLiquidity);
     }
 
     function decreaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
@@ -214,7 +215,7 @@ abstract contract RoycoPositionManager is ERC721 {
         uint256 resultingLiquidity = WeirollWalletV2(weirollWallet).getPositionLiquidity(market.liquidityGetter);
         uint256 liquidityDecrease = initialLiquidity - resultingLiquidity;
         // Check that the withdraw recipe execution rendered a non-zero liquidity decrease
-        require(liquidityDecrease > 0, LiquidityIncreasedMustBeNonZero());
+        require(liquidityDecrease > 0, LiquidityDecreaseMustBeNonZero());
 
         // Update the position's liquidity units to reflect the decrease after withdrawing.
         position.liquidity = resultingLiquidity;
@@ -222,7 +223,7 @@ abstract contract RoycoPositionManager is ERC721 {
         market.totalLiquidity -= liquidityDecrease;
 
         // Emit an event to signal the position removing liquidity
-        emit PositionLiquidityDecreased(incentiveCampaignId, _positionId, msg.sender, liquidityDecrease);
+        emit PositionLiquidityDecreased(incentiveCampaignId, _positionId, msg.sender, resultingLiquidity);
     }
 
     function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {
