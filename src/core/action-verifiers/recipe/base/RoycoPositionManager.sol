@@ -46,7 +46,7 @@ abstract contract RoycoPositionManager is ERC721 {
     struct Market {
         Recipe depositRecipe;
         Recipe withdrawalRecipe;
-        Recipe liquidityGetter;
+        Recipe liquidityQuery;
         uint256 totalLiquidity;
         address[] incentives;
         mapping(address incentive => StreamInterval interval) incentiveToStreamInterval;
@@ -334,8 +334,7 @@ abstract contract RoycoPositionManager is ERC721 {
         returns (uint256 resultingLiquidity)
     {
         // Query the position's liquidity as a static call to make sure there are no state changes on a read only operation
-        (bool success, bytes memory ret) =
-            _weirollWallet.staticcall(abi.encodeWithSelector(WeirollWalletV2.getPositionLiquidity.selector, _market.liquidityGetter));
+        (bool success, bytes memory ret) = _weirollWallet.staticcall(abi.encodeWithSelector(WeirollWalletV2.executeQuery.selector, _market.liquidityQuery));
         // Ensure that the query executed successfully
         require(success, LiquidityQueryFailed());
         // Decode the return data
