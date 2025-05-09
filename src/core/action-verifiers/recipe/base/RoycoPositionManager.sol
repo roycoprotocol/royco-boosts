@@ -92,7 +92,7 @@ abstract contract RoycoPositionManager is ERC721 {
     /// @notice The address of the WeirollWalletV2 implementation contract
     address public immutable WEIROLL_WALLET_V2_IMPLEMENTATION;
 
-    event PositionMinted(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, address weirollWallet, uint256 liquidity);
+    event PositionMinted(uint256 indexed positionId, bytes32 indexed incentiveCampaignId, address indexed ap, address weirollWallet);
 
     event PositionLiquidityIncreased(uint256 indexed positionId, address indexed ap, uint256 liquidity);
 
@@ -148,15 +148,18 @@ abstract contract RoycoPositionManager is ERC721 {
         // Update needs to happen before this position and market's liquidity units are updated
         _updateIncentivesForPosition(market, position);
 
+        // Mints an NFT to the AP representing their Royco position
+        _safeMint(msg.sender, positionId);
+
         // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
         result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
+
+        // Emit an event to signal the mint
+        emit PositionMinted(positionId, _incentiveCampaignId, msg.sender, weirollWallet);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
         liquidity = _updatePositionLiquidity(positionId, position, 0, weirollWallet, market);
         require(liquidity > 0, LiquidityIncreaseMustBeNonZero());
-
-        // Mints an NFT to the AP representing their Royco position
-        _safeMint(msg.sender, positionId);
     }
 
     function increaseLiquidity(
