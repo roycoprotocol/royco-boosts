@@ -151,11 +151,11 @@ abstract contract RoycoPositionManager is ERC721 {
         // Mints an NFT to the AP representing their Royco position
         _safeMint(msg.sender, positionId);
 
-        // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
-        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
-
         // Emit an event to signal the mint
         emit PositionMinted(positionId, _incentiveCampaignId, msg.sender, weirollWallet);
+
+        // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
         liquidity = _updatePositionLiquidity(positionId, position, 0, weirollWallet, market);
