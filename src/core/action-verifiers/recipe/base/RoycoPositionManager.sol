@@ -100,12 +100,13 @@ abstract contract RoycoPositionManager is ERC721 {
 
     event PositionBurned(uint256 indexed positionId, address indexed ap);
 
-    error LiquidityIncreaseMustBeNonZero();
-    error LiquidityDecreaseMustBeNonZero();
     error OnlyPositionOwner();
+    error LiquidityMustIncrease();
+    error LiquidityMustDecrease();
     error MustRemoveAllLiquidityToBurn();
     error MustClaimIncentivesToBurn(address incentive);
     error LiquidityQueryFailed();
+    error MinLiquidityNotSatisfied(uint256 expected, uint256 actual);
 
     /// @notice Modifier that restricts the caller to be the owner of the position.
     /// @param _positionId The position ID of the position the caller must be the owner of.
@@ -121,7 +122,9 @@ abstract contract RoycoPositionManager is ERC721 {
 
     function mint(
         bytes32 _incentiveCampaignId,
-        bytes calldata _executionParams
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut,
+        address _recipient
     )
         external
         payable
@@ -149,8 +152,8 @@ abstract contract RoycoPositionManager is ERC721 {
         // Update needs to happen before this position and market's liquidity units are updated
         _updateIncentivesForPosition(market, position);
 
-        // Mints an NFT to the AP representing their Royco position
-        _safeMint(msg.sender, positionId);
+        // Mints an NFT to the recipient representing their Royco position
+        _safeMint(_recipient, positionId);
 
         // Emit an event to signal the mint
         emit PositionMinted(positionId, _incentiveCampaignId, msg.sender, weirollWallet);
@@ -159,13 +162,13 @@ abstract contract RoycoPositionManager is ERC721 {
         result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
-        liquidity = _updatePositionLiquidity(positionId, position, 0, weirollWallet, market);
-        require(liquidity > 0, LiquidityIncreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(positionId, position, weirollWallet, market, 0, _minLiquidityOut);
     }
 
     function increaseLiquidity(
         uint256 _positionId,
-        bytes calldata _executionParams
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut
     )
         external
         payable
@@ -187,13 +190,14 @@ abstract contract RoycoPositionManager is ERC721 {
         result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
-        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
-        require(liquidity > initialLiquidity, LiquidityIncreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+        require(liquidity > initialLiquidity, LiquidityMustIncrease());
     }
 
     function decreaseLiquidity(
         uint256 _positionId,
-        bytes calldata _executionParams
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut
     )
         external
         onlyPositionOwner(_positionId)
@@ -210,12 +214,13 @@ abstract contract RoycoPositionManager is ERC721 {
 
         // Execute the withdrawal Weiroll Recipe through theis position's Weiroll Wallet
         uint256 initialLiquidity = position.liquidity;
+
         address payable weirollWallet = payable(position.weirollWallet);
         result = WeirollWalletV2(weirollWallet).executeWeirollRecipe(msg.sender, market.withdrawalRecipe, _executionParams);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the withdrawal recipe
-        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
-        require(liquidity < initialLiquidity, LiquidityDecreaseMustBeNonZero());
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+        require(initialLiquidity < liquidity, LiquidityMustDecrease());
     }
 
     function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {
@@ -255,7 +260,8 @@ abstract contract RoycoPositionManager is ERC721 {
 
     function executeCustomWeirollRecipe(
         uint256 _positionId,
-        Recipe calldata _recipe
+        Recipe calldata _recipe,
+        uint256 _minLiquidityOut
     )
         external
         payable
@@ -279,13 +285,14 @@ abstract contract RoycoPositionManager is ERC721 {
         result = WeirollWalletV2(weirollWallet).executeCustomWeirollRecipe{ value: msg.value }(msg.sender, _recipe);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
-        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
     }
 
     function execute(
         uint256 _positionId,
         address _to,
-        bytes memory _data
+        bytes memory _data,
+        uint256 _minLiquidityOut
     )
         external
         payable
@@ -309,7 +316,7 @@ abstract contract RoycoPositionManager is ERC721 {
         result = WeirollWalletV2(weirollWallet).execute{ value: msg.value }(_to, _data);
 
         // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
-        liquidity = _updatePositionLiquidity(_positionId, position, initialLiquidity, weirollWallet, market);
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
     }
 
     /// @notice Computes the address of an AP's next Weiroll Wallet.
@@ -326,9 +333,10 @@ abstract contract RoycoPositionManager is ERC721 {
     function _updatePositionLiquidity(
         uint256 _positionId,
         RoycoPosition storage _position,
-        uint256 _initialLiquidity,
         address _weirollWallet,
-        Market storage _market
+        Market storage _market,
+        uint256 _initialLiquidity,
+        uint256 _minLiquidity
     )
         internal
         returns (uint256 resultingLiquidity)
@@ -339,6 +347,9 @@ abstract contract RoycoPositionManager is ERC721 {
         require(success, LiquidityQueryFailed());
         // Decode the return data
         resultingLiquidity = abi.decode(ret, (uint256));
+
+        // Check that slippage constraint isn't violated
+        require(resultingLiquidity >= _minLiquidity, MinLiquidityNotSatisfied(_minLiquidity, resultingLiquidity));
 
         // If no change in liquidity, skip updating the position and market's liquidity units
         if (resultingLiquidity == _initialLiquidity) return resultingLiquidity;
