@@ -105,6 +105,7 @@ abstract contract RoycoPositionManager is ERC721 {
     error OnlyPositionOwner();
     error MustRemoveAllLiquidityToBurn();
     error MustClaimIncentivesToBurn(address incentive);
+    error LiquidityQueryFailed();
 
     /// @notice Modifier that restricts the caller to be the owner of the position.
     /// @param _positionId The position ID of the position the caller must be the owner of.
@@ -326,34 +327,33 @@ abstract contract RoycoPositionManager is ERC721 {
         uint256 _positionId,
         RoycoPosition storage _position,
         uint256 _initialLiquidity,
-        address payable _weirollWallet,
+        address _weirollWallet,
         Market storage _market
     )
         internal
         returns (uint256 resultingLiquidity)
     {
-        // Get the liquidity units for this position based on the state of the Weiroll Wallet
-        resultingLiquidity = WeirollWalletV2(_weirollWallet).getPositionLiquidity(_market.liquidityGetter);
+        // Query the position's liquidity as a static call to make sure there are no state changes on a read only operation
+        (bool success, bytes memory ret) =
+            _weirollWallet.staticcall(abi.encodeWithSelector(WeirollWalletV2.getPositionLiquidity.selector, _market.liquidityGetter));
+        // Ensure that the query executed successfully
+        require(success, LiquidityQueryFailed());
+        // Decode the return data
+        resultingLiquidity = abi.decode(ret, (uint256));
 
-        // Compute the change in liquidity units for the position and its direction.
-        bool liquidityIncreased = resultingLiquidity > _initialLiquidity;
-        uint256 liquidityDelta = liquidityIncreased ? (resultingLiquidity - _initialLiquidity) : (_initialLiquidity - resultingLiquidity);
+        // If no change in liquidity, skip updating the position and market's liquidity units
+        if (resultingLiquidity == _initialLiquidity) return resultingLiquidity;
 
-        // If the liquidity increased or decreased, update the position and market's liquidity units.
-        if (liquidityDelta != 0) {
-            // Update the position's liquidity units.
-            _position.liquidity = resultingLiquidity;
+        // Update the position's liquidity units
+        _position.liquidity = resultingLiquidity;
 
-            // Update the market's liquidity units.
-            // Emit an event to signal the increase or decrease in the position's liquidity
-            if (liquidityIncreased) {
-                _market.totalLiquidity += liquidityDelta;
-                emit PositionLiquidityIncreased(_positionId, msg.sender, resultingLiquidity);
-            } else {
-                // Update the market's total liquidity units.
-                _market.totalLiquidity -= liquidityDelta;
-                emit PositionLiquidityDecreased(_positionId, msg.sender, resultingLiquidity);
-            }
+        // Update the market's liquidity units and emit an event to signal the change
+        if (resultingLiquidity > _initialLiquidity) {
+            _market.totalLiquidity += (resultingLiquidity - _initialLiquidity);
+            emit PositionLiquidityIncreased(_positionId, msg.sender, resultingLiquidity);
+        } else {
+            _market.totalLiquidity -= (_initialLiquidity - resultingLiquidity);
+            emit PositionLiquidityDecreased(_positionId, msg.sender, resultingLiquidity);
         }
     }
 
