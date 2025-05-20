@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import { VM } from "../../../../lib/enso-weiroll/contracts/VM.sol";
 import { Clones } from "../../../../lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
+import {RoycoPositionManager} from "./base/RoycoPositionManager.sol";
 
 /// @title WeirollWalletV2
 /// @notice WeirollWalletV2 implementation contract.
@@ -17,6 +18,8 @@ contract WeirollWalletV2 is VM {
     /// @notice A transient state variable set when executing a Weiroll recipe.
     /// @dev The address is set to the AP executing the recipe.
     address transient public actionProvider;
+
+    error RawExecutionFailed();
 
     function getRecipeChef() public view returns (address recipeChef) {
         bytes memory immutableArgs = address(this).fetchCloneArgs();
@@ -48,22 +51,20 @@ contract WeirollWalletV2 is VM {
     }
 
 
-    /// @notice Execute the Weiroll VM with the given commands.
+    /// @notice Execute the Weiroll Recipe in the Weiroll VM with the given parameters.
     /// @param _ap The address of the ActionProvider
-    /// @param _commands The commands to be executed by the Weiroll VM.
-    /// @param _state The state of the Weiroll VM when executing the commands.
-    /// @param _executionParams Runtime params to be used when executing the recipe.
+    /// @param _recipe The Weiroll Recipe to be executed by the Weiroll VM.
     /// @param _executionParams Runtime params to be used when executing the recipe.
     function executeWeirollRecipe(
         address _ap,
-        bytes32[] calldata _commands,
-        bytes[] calldata _state,
+        RoycoPositionManager.Recipe calldata _recipe,
         bytes calldata _executionParams
     )
-        public
+        external
         payable
         onlyRecipeChef
-        returns (uint256 liquidity)
+        returns
+        (bytes[] memory result)
     {
         // Set the action provider address for the Weiroll recipe to read
         actionProvider = _ap;
@@ -72,12 +73,58 @@ contract WeirollWalletV2 is VM {
         executionParams = _executionParams;
 
         // Execute the Weiroll Recipe in the VM.
-        bytes[] memory returnData = _execute(_commands, _state);
-        // The last element of the resulting state array should hold the liquidity deposited/withdrawn.
-        liquidity = uint256(bytes32(returnData[returnData.length - 1]));
+        result =_execute(_recipe.weirollCommands, _recipe.weirollState);
 
         // Delete the execution params for a gas refund.
         delete executionParams;
+    }
+
+    /// @notice Execute the read-only recipe in the VM and return the result (held as the last state element).
+    /// @dev This function must be invoked as a static call to enforce that it doesn't modify any state.
+    /// @param _query The query recipe (commands and state) to be executed by the Weiroll VM.
+    /// @return result The result of the query.
+    function executeQuery(
+        RoycoPositionManager.Recipe calldata _query
+    )
+        external
+        onlyRecipeChef
+        returns (uint256 result)
+    {
+        // Execute the Weiroll Recipe in the VM.
+        bytes[] memory returnData = _execute(_query.weirollCommands, _query.weirollState);
+        // The last element of the resulting state array should hold the result of the query.
+        result = uint256(bytes32(returnData[returnData.length - 1]));
+    }
+
+    /// @notice Execute a custom Weiroll Recipe in the Weiroll VM with the given parameters.
+    /// @notice Callable through `executeCustomWeirollRecipe()` in the Royco Position Manager. 
+    /// @param _ap The address of the ActionProvider
+    /// @param _recipe The Weiroll Recipe to be executed by the Weiroll VM.
+    function executeCustomWeirollRecipe(
+        address _ap,
+        RoycoPositionManager.Recipe calldata _recipe
+    )
+        external
+        payable
+        onlyRecipeChef
+        returns
+        (bytes[] memory)
+    {
+        // Set the action provider address for the Weiroll recipe to read
+        actionProvider = _ap;
+
+        // Execute the Weiroll Recipe in the VM.
+        return _execute(_recipe.weirollCommands, _recipe.weirollState);
+    }
+
+    /// @notice Execute a generic call to another contract.
+    /// @param to The address to call
+    /// @param data The data to pass along with the call
+    function execute(address to, bytes memory data) external payable onlyRecipeChef returns (bytes memory result) {
+        // Execute the call.
+        bool success;
+        (success, result) = to.call{ value: msg.value }(data);
+        require(success, RawExecutionFailed());
     }
 
     /// @notice Let the Weiroll Wallet receive ether directly if needed

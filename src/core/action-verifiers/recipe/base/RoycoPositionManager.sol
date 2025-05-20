@@ -46,6 +46,7 @@ abstract contract RoycoPositionManager is ERC721 {
     struct Market {
         Recipe depositRecipe;
         Recipe withdrawalRecipe;
+        Recipe liquidityQuery;
         uint256 totalLiquidity;
         address[] incentives;
         mapping(address incentive => StreamInterval interval) incentiveToStreamInterval;
@@ -91,18 +92,21 @@ abstract contract RoycoPositionManager is ERC721 {
     /// @notice The address of the WeirollWalletV2 implementation contract
     address public immutable WEIROLL_WALLET_V2_IMPLEMENTATION;
 
-    event PositionMinted(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, address weirollWallet, uint256 liquidity);
+    event PositionMinted(uint256 indexed positionId, bytes32 indexed incentiveCampaignId, address indexed ap, address weirollWallet);
 
-    event PositionLiquidityIncreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityAdded);
+    event PositionLiquidityIncreased(uint256 indexed positionId, address indexed ap, uint256 liquidity);
 
-    event PositionLiquidityDecreased(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap, uint256 liquidityRemoved);
+    event PositionLiquidityDecreased(uint256 indexed positionId, address indexed ap, uint256 liquidity);
 
-    event PositionBurned(bytes32 indexed incentiveCampaignId, uint256 indexed positionId, address indexed ap);
+    event PositionBurned(uint256 indexed positionId, address indexed ap);
 
-    error LiquidityDepositedMustBeNonZero();
     error OnlyPositionOwner();
+    error LiquidityMustIncrease();
+    error LiquidityMustDecrease();
     error MustRemoveAllLiquidityToBurn();
     error MustClaimIncentivesToBurn(address incentive);
+    error LiquidityQueryFailed();
+    error MinLiquidityNotSatisfied(uint256 expected, uint256 actual);
 
     /// @notice Modifier that restricts the caller to be the owner of the position.
     /// @param _positionId The position ID of the position the caller must be the owner of.
@@ -116,18 +120,16 @@ abstract contract RoycoPositionManager is ERC721 {
         WEIROLL_WALLET_V2_IMPLEMENTATION = address(new WeirollWalletV2());
     }
 
-    /// @notice Computes the address of an AP's next Weiroll Wallet.
-    /// @param _ap The address of the Action Provider to calculate the next Weiroll Wallet address for.
-    function getNextWeirollWalletAddress(address _ap) external view returns (address nextWeirollWallet) {
-        // Calculate the APs next position ID by concatenating their address and next positon nonce
-        uint256 nextPositionId = uint256(bytes32(abi.encodePacked(_ap, apToPositionNonce[_ap])));
-        // Compute the address of their next deterministically deployed weiroll wallet
-        nextWeirollWallet = WEIROLL_WALLET_V2_IMPLEMENTATION.predictDeterministicAddressWithImmutableArgs(
-            abi.encodePacked(address(this), nextPositionId), bytes32(nextPositionId)
-        );
-    }
-
-    function mint(bytes32 _incentiveCampaignId, bytes calldata _executionParams) external payable returns (uint256 positionId, address payable weirollWallet) {
+    function mint(
+        bytes32 _incentiveCampaignId,
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut,
+        address _recipient
+    )
+        external
+        payable
+        returns (uint256 positionId, address payable weirollWallet, uint256 liquidity, bytes[] memory result)
+    {
         // Get the liquidity market from storage
         Market storage market = incentiveCampaignIdToMarket[_incentiveCampaignId];
 
@@ -141,17 +143,6 @@ abstract contract RoycoPositionManager is ERC721 {
         weirollWallet =
             payable(WEIROLL_WALLET_V2_IMPLEMENTATION.cloneDeterministicWithImmutableArgs(abi.encodePacked(address(this), positionId), bytes32(positionId)));
 
-        // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
-        // The liquidity returned will be used to calculate the user's share of rewards in the stream
-        uint256 liquidity = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(
-            msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
-        );
-        // Check that the deposit recipe rendered a non-zero liquidity
-        require(liquidity > 0, LiquidityDepositedMustBeNonZero());
-
-        // Mints an NFT representing the AP's Royco position
-        _safeMint(msg.sender, positionId);
-
         // Initialize the Royco position state
         RoycoPosition storage position = positionIdToPosition[positionId];
         position.incentiveCampaignId = _incentiveCampaignId;
@@ -161,66 +152,75 @@ abstract contract RoycoPositionManager is ERC721 {
         // Update needs to happen before this position and market's liquidity units are updated
         _updateIncentivesForPosition(market, position);
 
-        // Initialize the position's liquidity units
-        position.liquidity = liquidity;
-        // Add the liquidity units for this position to the market's total liquidity units
-        market.totalLiquidity += liquidity;
+        // Mints an NFT to the recipient representing their Royco position
+        _safeMint(_recipient, positionId);
 
         // Emit an event to signal the mint
-        emit PositionMinted(_incentiveCampaignId, positionId, msg.sender, weirollWallet, liquidity);
+        emit PositionMinted(positionId, _incentiveCampaignId, msg.sender, weirollWallet);
+
+        // Execute the deposit Weiroll Recipe through the fresh Weiroll Wallet
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
+
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
+        liquidity = _updatePositionLiquidity(positionId, position, weirollWallet, market, 0, _minLiquidityOut);
     }
 
-    function increaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external payable onlyPositionOwner(_positionId) {
+    function increaseLiquidity(
+        uint256 _positionId,
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
-        // Cache the incentive campaign ID
-        bytes32 incentiveCampaignId = position.incentiveCampaignId;
         // Get the liquidity market from storage
-        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+        Market storage market = incentiveCampaignIdToMarket[position.incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
         _updateIncentivesForPosition(market, position);
 
         // Execute the Deposit Weiroll Recipe through theis position's Weiroll Wallet
-        uint256 liquidityAdded = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe{ value: msg.value }(
-            msg.sender, market.depositRecipe.weirollCommands, market.depositRecipe.weirollState, _executionParams
-        );
+        uint256 initialLiquidity = position.liquidity;
+        address payable weirollWallet = payable(position.weirollWallet);
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe{ value: msg.value }(msg.sender, market.depositRecipe, _executionParams);
 
-        // Update the position's liquidity units to reflect the increase after depositing.
-        position.liquidity += liquidityAdded;
-        // Add the increase in liquidity units for this position to the market's total liquidity units.
-        market.totalLiquidity += liquidityAdded;
-
-        // Emit an event to signal the position adding liquidity
-        emit PositionLiquidityIncreased(incentiveCampaignId, _positionId, msg.sender, liquidityAdded);
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the deposit recipe
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+        require(liquidity > initialLiquidity, LiquidityMustIncrease());
     }
 
-    function decreaseLiquidity(uint256 _positionId, bytes calldata _executionParams) external onlyPositionOwner(_positionId) {
+    function decreaseLiquidity(
+        uint256 _positionId,
+        bytes calldata _executionParams,
+        uint256 _minLiquidityOut
+    )
+        external
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
         // Get the Royco position from storage
         RoycoPosition storage position = positionIdToPosition[_positionId];
 
-        // Cache the incentive campaign ID
-        bytes32 incentiveCampaignId = position.incentiveCampaignId;
         // Get the liquidity market from storage
-        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+        Market storage market = incentiveCampaignIdToMarket[position.incentiveCampaignId];
 
         // Update the incentives accumulated for this position in addition to all stream states for its market
         _updateIncentivesForPosition(market, position);
 
-        // Execute the Weiroll Recipe through theis position's Weiroll Wallet
-        // The liquidity returned will be used to calculate the user's share of rewards in the stream
-        uint256 liquidityRemoved = WeirollWalletV2(payable(position.weirollWallet)).executeWeirollRecipe(
-            msg.sender, market.withdrawalRecipe.weirollCommands, market.withdrawalRecipe.weirollState, _executionParams
-        );
+        // Execute the withdrawal Weiroll Recipe through theis position's Weiroll Wallet
+        uint256 initialLiquidity = position.liquidity;
 
-        // Update the position's liquidity units to reflect the decrease after withdrawing.
-        position.liquidity -= liquidityRemoved;
-        // Subtract the decrease in liquidity units for this position from the market's total liquidity units.
-        market.totalLiquidity -= liquidityRemoved;
+        address payable weirollWallet = payable(position.weirollWallet);
+        result = WeirollWalletV2(weirollWallet).executeWeirollRecipe(msg.sender, market.withdrawalRecipe, _executionParams);
 
-        // Emit an event to signal the position removing liquidity
-        emit PositionLiquidityDecreased(incentiveCampaignId, _positionId, msg.sender, liquidityRemoved);
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the withdrawal recipe
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+        require(initialLiquidity < liquidity, LiquidityMustDecrease());
     }
 
     function burn(uint256 _positionId) external onlyPositionOwner(_positionId) {
@@ -254,8 +254,117 @@ abstract contract RoycoPositionManager is ERC721 {
         // Burn the position's NFT
         _burn(_positionId);
 
-        // Emit an event to signal the position removing liquidity
-        emit PositionBurned(incentiveCampaignId, _positionId, msg.sender);
+        // Emit an event to signal the position being burned
+        emit PositionBurned(_positionId, msg.sender);
+    }
+
+    function executeCustomWeirollRecipe(
+        uint256 _positionId,
+        Recipe calldata _recipe,
+        uint256 _minLiquidityOut
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes[] memory result)
+    {
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[_positionId];
+
+        // Cache the incentive campaign ID
+        bytes32 incentiveCampaignId = position.incentiveCampaignId;
+        // Get the liquidity market from storage
+        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+
+        // Update the incentives accumulated for this position in addition to all stream states for its market
+        _updateIncentivesForPosition(market, position);
+
+        // Execute the custom Weiroll Recipe through this position's Weiroll Wallet
+        uint256 initialLiquidity = position.liquidity;
+        address payable weirollWallet = payable(position.weirollWallet);
+        result = WeirollWalletV2(weirollWallet).executeCustomWeirollRecipe{ value: msg.value }(msg.sender, _recipe);
+
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+    }
+
+    function execute(
+        uint256 _positionId,
+        address _to,
+        bytes memory _data,
+        uint256 _minLiquidityOut
+    )
+        external
+        payable
+        onlyPositionOwner(_positionId)
+        returns (uint256 liquidity, bytes memory result)
+    {
+        // Get the Royco position from storage
+        RoycoPosition storage position = positionIdToPosition[_positionId];
+
+        // Cache the incentive campaign ID
+        bytes32 incentiveCampaignId = position.incentiveCampaignId;
+        // Get the liquidity market from storage
+        Market storage market = incentiveCampaignIdToMarket[incentiveCampaignId];
+
+        // Update the incentives accumulated for this position in addition to all stream states for its market
+        _updateIncentivesForPosition(market, position);
+
+        // Execute the custom Weiroll Recipe through this position's Weiroll Wallet
+        uint256 initialLiquidity = position.liquidity;
+        address payable weirollWallet = payable(position.weirollWallet);
+        result = WeirollWalletV2(weirollWallet).execute{ value: msg.value }(_to, _data);
+
+        // Update position's liquidity units based on the state of the Weiroll Wallet after executing the custom recipe
+        liquidity = _updatePositionLiquidity(_positionId, position, weirollWallet, market, initialLiquidity, _minLiquidityOut);
+    }
+
+    /// @notice Computes the address of an AP's next Weiroll Wallet.
+    /// @param _ap The address of the Action Provider to calculate the next Weiroll Wallet address for.
+    function getNextWeirollWalletAddress(address _ap) external view returns (address nextWeirollWallet) {
+        // Calculate the APs next position ID by concatenating their address and next positon nonce
+        uint256 nextPositionId = uint256(bytes32(abi.encodePacked(_ap, apToPositionNonce[_ap])));
+        // Compute the address of their next deterministically deployed weiroll wallet
+        nextWeirollWallet = WEIROLL_WALLET_V2_IMPLEMENTATION.predictDeterministicAddressWithImmutableArgs(
+            abi.encodePacked(address(this), nextPositionId), bytes32(nextPositionId)
+        );
+    }
+
+    function _updatePositionLiquidity(
+        uint256 _positionId,
+        RoycoPosition storage _position,
+        address _weirollWallet,
+        Market storage _market,
+        uint256 _initialLiquidity,
+        uint256 _minLiquidity
+    )
+        internal
+        returns (uint256 resultingLiquidity)
+    {
+        // Query the position's liquidity as a static call to make sure there are no state changes on a read only operation
+        (bool success, bytes memory ret) = _weirollWallet.staticcall(abi.encodeWithSelector(WeirollWalletV2.executeQuery.selector, _market.liquidityQuery));
+        // Ensure that the query executed successfully
+        require(success, LiquidityQueryFailed());
+        // Decode the return data
+        resultingLiquidity = abi.decode(ret, (uint256));
+
+        // Check that slippage constraint isn't violated
+        require(resultingLiquidity >= _minLiquidity, MinLiquidityNotSatisfied(_minLiquidity, resultingLiquidity));
+
+        // If no change in liquidity, skip updating the position and market's liquidity units
+        if (resultingLiquidity == _initialLiquidity) return resultingLiquidity;
+
+        // Update the position's liquidity units
+        _position.liquidity = resultingLiquidity;
+
+        // Update the market's liquidity units and emit an event to signal the change
+        if (resultingLiquidity > _initialLiquidity) {
+            _market.totalLiquidity += (resultingLiquidity - _initialLiquidity);
+            emit PositionLiquidityIncreased(_positionId, msg.sender, resultingLiquidity);
+        } else {
+            _market.totalLiquidity -= (_initialLiquidity - resultingLiquidity);
+            emit PositionLiquidityDecreased(_positionId, msg.sender, resultingLiquidity);
+        }
     }
 
     function _updateIncentivesForPosition(Market storage _market, RoycoPosition storage _position) internal {
