@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import { ActionVerifierBase } from "../base/ActionVerifierBase.sol";
 import { IncentiveLocker } from "../../IncentiveLocker.sol";
-import { ICampaignIncentra } from "../../../interfaces/ICampaignIncentra.sol";
+import { IIncentraCampaign } from "../../../interfaces/IIncentraCampaign.sol";
 
 /// @title IncentraAV
 /// @notice The Incentra Action Verifier is used for Royco incentive campaigns powered by Incentra.
@@ -83,7 +83,7 @@ contract IncentraAV is ActionVerifierBase {
         // Check that the IP can now be refunded for this campaign
         // Don't need to check amounts to remove, since IncentiveLocker won't let the IP remove more than is remaining
         address incertaCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incertaCampaign;
-        require(ICampaignIncentra(incertaCampaign).refund(), CannotRefundBeforeGracePeriodEnds());
+        require(IIncentraCampaign(incertaCampaign).canRefund(), CannotRefundBeforeGracePeriodEnds());
     }
 
     /// @notice Processes a claim by validating the provided parameters.
@@ -105,12 +105,12 @@ contract IncentraAV is ActionVerifierBase {
 
         if (params.campaignType == CampaignType.SAME_CHAIN) {
             // Get the amounts owed to this AP
-            (incentives, incentiveAmountsOwed) = ICampaignIncentra(params.incertaCampaign).claim(_ap);
+            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incertaCampaign).claim(_ap);
         } else {
             // Decode the params to claim from a cross chain campaign
             (uint256[] memory cumulativeAmounts, uint64 epoch, bytes32[] memory proof) = abi.decode(_claimParams, (uint256[], uint64, bytes32[]));
             // Get the amounts owed to this AP
-            (incentives, incentiveAmountsOwed) = ICampaignIncentra(params.incertaCampaign).claim(_ap, cumulativeAmounts, epoch, proof);
+            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incertaCampaign).claim(_ap, cumulativeAmounts, epoch, proof);
         }
     }
 
@@ -128,7 +128,7 @@ contract IncentraAV is ActionVerifierBase {
     {
         // Check that the IP can now be refunded for this campaign
         address incertaCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incertaCampaign;
-        require(ICampaignIncentra(incertaCampaign).refund(), CannotRefundBeforeGracePeriodEnds());
+        require(IIncentraCampaign(incertaCampaign).refund(), CannotRefundBeforeGracePeriodEnds());
 
         // Return the incentives remaining as the max removable incentive amounts
         (,,, maxRemovableIncentiveAmounts) = IncentiveLocker(incentiveLocker).getIncentiveAmountsOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove);

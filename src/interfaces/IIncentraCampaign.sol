@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface ICampaignIncentra {
+interface IIncentraCampaign {
     /// @notice The claim function for same chain campaigns.
     /// @param earner The address of the AP (Action Provider) to claim incentives to.
     /// @return incentives The incentives to be paid out to the earner.
@@ -26,5 +26,5 @@ interface ICampaignIncentra {
 
     /// @notice Returns a boolean indicating if the remaining incentives can be refunded.
     /// @return valid A boolean indicating if the remaining incentives can be refunded.
-    function refund() external view returns (bool valid);
+    function canRefund() external view returns (bool valid);
 }
