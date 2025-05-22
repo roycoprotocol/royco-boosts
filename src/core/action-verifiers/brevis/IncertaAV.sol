@@ -16,17 +16,17 @@ contract IncentraAV is ActionVerifierBase {
 
     /// @notice A struct holding the Incentra campaign's type and address.
     /// @custom:field campaignType The type of the Incentra campaign.
-    /// @custom:field incertaCampaign The address of the Incentra campaign.
+    /// @custom:field incentraCampaign The address of the Incentra campaign.
     struct ActionParams {
         CampaignType campaignType;
-        address incertaCampaign;
+        address incentraCampaign;
     }
 
     /// @notice A mapping from incentive campaign ID to its Incentra campaign parameters.
     mapping(bytes32 id => ActionParams params) incentiveCampaignIdToCampaignParams;
 
     /// @notice Error thrown when trying to create a campaign with an campaign address that doesn't allow this AV to process claims.
-    error IncertaPayoutAddressMustBeAV();
+    error IncentraPayoutAddressMustBeAV();
     /// @notice Error thrown when trying to add incentives to an Incentra campaign.
     error AddingIncentivesNotSupported();
     /// @notice Error thrown when trying to remove incentives from an Incentra campaign before its grace period ends.
@@ -53,7 +53,7 @@ contract IncentraAV is ActionVerifierBase {
         ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
         // Check that the AV can process claims and refunds for this campaign
-        require(IIncentraCampaign(params.incertaCampaign).externalPayoutAddress() == address(this), IncertaPayoutAddressMustBeAV());
+        require(IIncentraCampaign(params.incentraCampaign).externalPayoutAddress() == address(this), IncentraPayoutAddressMustBeAV());
 
         // Store the campaign parameters in persistent storage
         incentiveCampaignIdToCampaignParams[_incentiveCampaignId] = params;
@@ -89,10 +89,10 @@ contract IncentraAV is ActionVerifierBase {
         onlyIncentiveLocker
     {
         // Check that the IP can now be refunded for this campaign
-        // Don't need to check that IP is the main IP since Incerta doesn't allow adding incentives to a campaign
+        // Don't need to check that IP is the main IP since Incentra doesn't allow adding incentives to a campaign
         // Don't need to check amounts to remove, since IncentiveLocker won't let the IP remove more than is remaining
-        address incertaCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incertaCampaign;
-        require(IIncentraCampaign(incertaCampaign).canRefund(), CannotRefundBeforeGracePeriodEnds());
+        address incentraCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incentraCampaign;
+        require(IIncentraCampaign(incentraCampaign).canRefund(), CannotRefundBeforeGracePeriodEnds());
     }
 
     /// @notice Processes a claim by validating the provided parameters.
@@ -114,12 +114,12 @@ contract IncentraAV is ActionVerifierBase {
 
         if (params.campaignType == CampaignType.SAME_CHAIN) {
             // Get the amounts owed to this AP
-            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incertaCampaign).claim(_ap);
+            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incentraCampaign).claim(_ap);
         } else {
             // Decode the params to claim from a cross chain campaign
             (uint256[] memory cumulativeAmounts, uint64 epoch, bytes32[] memory proof) = abi.decode(_claimParams, (uint256[], uint64, bytes32[]));
             // Get the amounts owed to this AP
-            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incertaCampaign).claim(_ap, cumulativeAmounts, epoch, proof);
+            (incentives, incentiveAmountsOwed) = IIncentraCampaign(params.incentraCampaign).claim(_ap, cumulativeAmounts, epoch, proof);
         }
     }
 
@@ -136,8 +136,8 @@ contract IncentraAV is ActionVerifierBase {
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     {
         // Check that the IP can now be refunded for this campaign
-        address incertaCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incertaCampaign;
-        require(IIncentraCampaign(incertaCampaign).canRefund(), CannotRefundBeforeGracePeriodEnds());
+        address incentraCampaign = incentiveCampaignIdToCampaignParams[_incentiveCampaignId].incentraCampaign;
+        require(IIncentraCampaign(incentraCampaign).canRefund(), CannotRefundBeforeGracePeriodEnds());
 
         // Return the incentives remaining as the max removable incentive amounts
         (,,, maxRemovableIncentiveAmounts) = IncentiveLocker(incentiveLocker).getIncentiveAmountsOfferedAndRemaining(_incentiveCampaignId, _incentivesToRemove);
