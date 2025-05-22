@@ -2,6 +2,10 @@
 pragma solidity ^0.8.0;
 
 interface IIncentraCampaign {
+    /// @notice Returns the address that can call the claim function.
+    /// @return payoutAddress The address that can call the claim function.
+    function externalPayoutAddress() external view returns (address payoutAddress);
+
     /// @notice The claim function for same chain campaigns.
     /// @param earner The address of the AP (Action Provider) to claim incentives to.
     /// @return incentives The incentives to be paid out to the earner.
