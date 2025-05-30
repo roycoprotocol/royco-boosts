@@ -2,29 +2,27 @@
 pragma solidity ^0.8.0;
 
 import "../lib/forge-std/src/Script.sol";
-import { IncentiveLocker } from "../src/core/IncentiveLocker.sol";
+import { IncentraAV } from "../src/core/action-verifiers/brevis/IncentraAV.sol";
 
 // Deployer
 address constant CREATE2_FACTORY_ADDRESS = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
 // Deployment Configuration
-address constant INCENTIVE_LOCKER_OWNER = 0x77777Cc68b333a2256B436D675E8D257699Aa667;
-address constant DEFAULT_PROTOCOL_FEE_CLAIMAINT = 0x77777Cc68b333a2256B436D675E8D257699Aa667;
-uint64 constant DEFAULT_PROTOCOL_FEE = 0.04e18;
+address constant INCENTIVE_LOCKER = 0x7EeD8E02cF440034A6335e87a6724B1c14666F85;
 
 // Deployment salts
-string constant INCENTIVE_LOCKER_SALT = "ROYCO_INCENTIVE_LOCKER_50499e70e4955f54ed72746bdafdcf06b050f6d1";
+string constant INCENTRA_AV_SALT = "ROYCO_INCENTRA_AV_1716b7157475c9127a4f4f8f454a6d40f5be47f3";
 
 // Expected deployment addresses after simulating deployment
-address constant EXPECTED_INCENTIVE_LOCKER_ADDRESS = 0x7EeD8E02cF440034A6335e87a6724B1c14666F85;
+address constant EXPECTED_INCENTRA_AV_ADDRESS = 0xb56c0A94246736897225294d587F65b005fD6135;
 
-contract DeployIncentiveLocker is Script {
+contract DeployIncentraAV is Script {
     error Create2DeployerNotDeployed();
     error DeploymentFailed(bytes reason);
     error AddressDoesNotContainBytecode(address addr);
     error NotDeployedToExpectedAddress(address expected, address actual);
     error UnexpectedDeploymentAddress(address expected, address actual);
-    error IncentiveLockerOwnerIncorrect(address expected, address actual);
+    error IncentraAVOwnerIncorrect(address expected, address actual);
 
     function _generateUint256SaltFromString(string memory _salt) internal pure returns (uint256) {
         return uint256(keccak256(abi.encodePacked(_salt)));
@@ -42,12 +40,12 @@ contract DeployIncentiveLocker is Script {
         }
     }
 
-    function _verifyIncentiveLockerDeployment(IncentiveLocker _incentiveLocker) internal view {
-        if (address(_incentiveLocker) != EXPECTED_INCENTIVE_LOCKER_ADDRESS) {
-            revert UnexpectedDeploymentAddress(EXPECTED_INCENTIVE_LOCKER_ADDRESS, address(_incentiveLocker));
+    function _verifyIncentraAVDeployment(IncentraAV _incentraAV) internal view {
+        if (address(_incentraAV) != EXPECTED_INCENTRA_AV_ADDRESS) {
+            revert UnexpectedDeploymentAddress(EXPECTED_INCENTRA_AV_ADDRESS, address(_incentraAV));
         }
 
-        if (_incentiveLocker.owner() != INCENTIVE_LOCKER_OWNER) revert IncentiveLockerOwnerIncorrect(INCENTIVE_LOCKER_OWNER, _incentiveLocker.owner());
+        if (_incentraAV.incentiveLocker() != INCENTIVE_LOCKER) revert IncentraAVOwnerIncorrect(INCENTIVE_LOCKER, _incentraAV.incentiveLocker());
     }
 
     function _deploy(string memory _salt, bytes memory _creationCode) internal returns (address deployedAddress) {
@@ -87,6 +85,9 @@ contract DeployIncentiveLocker is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployerAddress = vm.addr(deployerPrivateKey);
 
+        address[] memory WHITELISTED_ASSERTERS = new address[](1);
+        WHITELISTED_ASSERTERS[0] = 0x77777Cc68b333a2256B436D675E8D257699Aa667;
+
         console2.log("Deploying with address: ", deployerAddress);
         console2.log("Deployer Balance: ", address(deployerAddress).balance);
 
@@ -96,15 +97,14 @@ contract DeployIncentiveLocker is Script {
         console2.log("Deployer is ready\n");
 
         // Deploy PointsFactory
-        console2.log("Deploying IncentiveLocker");
+        console2.log("Deploying IncentraAV");
 
-        bytes memory incentiveLockerCreationCode =
-            abi.encodePacked(vm.getCode("IncentiveLocker"), abi.encode(INCENTIVE_LOCKER_OWNER, DEFAULT_PROTOCOL_FEE_CLAIMAINT, DEFAULT_PROTOCOL_FEE));
-        IncentiveLocker incentiveLocker = IncentiveLocker(_deployWithSanityChecks(INCENTIVE_LOCKER_SALT, incentiveLockerCreationCode));
+        bytes memory incentraAVCreationCode = abi.encodePacked(vm.getCode("IncentraAV"), abi.encode(INCENTIVE_LOCKER));
+        IncentraAV incentraAV = IncentraAV(_deployWithSanityChecks(INCENTRA_AV_SALT, incentraAVCreationCode));
 
-        console2.log("Verifying IncentiveLocker deployment");
-        _verifyIncentiveLockerDeployment(incentiveLocker);
-        console2.log("IncentiveLocker deployed at: ", address(incentiveLocker), "\n");
+        console2.log("Verifying IncentraAV deployment");
+        _verifyIncentraAVDeployment(incentraAV);
+        console2.log("IncentraAV deployed at: ", address(incentraAV), "\n");
 
         vm.stopBroadcast();
     }
