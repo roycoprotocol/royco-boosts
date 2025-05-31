@@ -22,7 +22,7 @@ contract Test_CampaignCreation_UMC is RoycoTestBase {
         _startTimestamp = uint32(bound(_startTimestamp, 0, _endTimestamp - 1));
         _numIncentivesOffered = uint8(bound(_numIncentivesOffered, 1, 10));
 
-        bytes memory actionParams = abi.encode(_startTimestamp, _endTimestamp, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(_startTimestamp, _endTimestamp, "^0.0.0", bytes("avmParams")));
 
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, _numIncentivesOffered);
 

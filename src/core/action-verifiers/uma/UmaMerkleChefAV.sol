@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
-import { UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
+import { IncentiveLocker, UmaMerkleOracleBase, AncillaryData } from "./base/UmaMerkleOracleBase.sol";
 import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
@@ -14,20 +13,20 @@ import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointM
 ///         Each merkle root posted for a campaign should be composed of leaves containing incentive amounts >= the previous root.
 ///         This contract extends UmaMerkleOracleBase to assert, resolve, and dispute Merkle roots posted by the oracle.
 ///         It implements IActionVerifier to perform checks on incentive campaign creation, modifications, and claims.
-contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
+contract UmaMerkleChefAV is UmaMerkleOracleBase {
     using FixedPointMathLib for uint256;
 
-    /// @notice An enum representing different modifications that can be made to incentive streams for a campaign.
+    /// @notice An enumeration of modifications that can be made to incentive streams for a campaign.
     /// @custom:field INIT_STREAMS Initializes the incentives streams for a campaign and sets its initial emission rate.
     /// @custom:field INCREASE_RATE Add incentives to a stream, increasing its rate from now until the end timestamp.
     /// @custom:field DECREASE_RATE Removes incentives from a stream, decreasing its rate from now until the end timestamp.
-    enum Modifications {
+    enum Modification {
         INIT_STREAMS,
         INCREASE_RATE,
         DECREASE_RATE
     }
 
-    /// @notice Action parameters for this action verifier.
+    /// @notice Action parameters for this Action Verifier.
     /// @custom:field startTimestamp The timestamp to start streaming incentives for this campaign.
     /// @custom:field endTimestamp The timestamp to stop streaming incentives for this campaign.
     /// @custom:field avmVersion The version of Royco's Action Verification Machine (AVM) to use to generate merkle roots for this campaign.
@@ -35,19 +34,19 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @custom:field avmParams Campaign parameters used by Royco's Action Verification Machine (AVM) to generate merkle roots.
     ///               The documentation and source code for the AVM can be found here: https://github.com/roycoprotocol/royco-avm
     struct ActionParams {
-        uint32 startTimestamp;
-        uint32 endTimestamp;
+        uint40 startTimestamp;
+        uint40 endTimestamp;
         string avmVersion;
         bytes avmParams;
     }
 
     /// @notice Parameters used for user claims.
     /// @custom:field incentives The total incentive tokens to pay out to the AP so far.
-    /// @custom:field incentiveAmountsOwed The amounts owed for each incentive in the incentives array.
+    /// @custom:field totalIncentiveAmountsOwed The total amounts owed for each incentive in the incentives array for the entire duration of the campaign.
     /// @custom:field merkleProof A merkle proof for leaf = keccak256(abi.encode(AP address, incentives, incentiveAmountsOwed))
     struct ClaimParams {
         address[] incentives;
-        uint256[] incentiveAmountsOwed;
+        uint256[] totalIncentiveAmountsOwed;
         bytes32[] merkleProof;
     }
 
@@ -60,7 +59,7 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Maps an incentiveCampaignId to its time interval.
     /// @dev The start timestamp is stored in the upper 32 bits and the end timestamp in the lower 32 bits.
-    mapping(bytes32 id => uint64 interval) public incentiveCampaignIdToInterval;
+    mapping(bytes32 id => uint80 interval) public incentiveCampaignIdToInterval;
 
     /// @notice Maps an incentiveCampaignId to an AP to an incentive to an amount already claimed.
     /// @dev Facilitates incentive streaming contigent that merkle leaves contain a monotonically increasing incentive amount.
@@ -72,14 +71,14 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param updatedRates The new incentive streaming rates for each corresponding token.
     event EmissionRatesUpdated(bytes32 indexed incentiveCampaignId, address[] incentives, uint256[] updatedRates);
 
-    /// @notice Error thrown when a function is called by an address other than the IncentiveLocker.
-    error OnlyIncentiveLocker();
-
     /// @notice Error thrown when the campaign's end timestamp is not greater than the start timestamp.
     error InvalidCampaignDuration();
 
     /// @notice Error thrown when the provided arrays have mismatched lengths.
     error ArrayLengthMismatch();
+
+    /// @notice Error thrown when a coIP is trying to remove incentives.
+    error OnlyMainIP();
 
     /// @notice Error thrown when there is no claimable incentive amount.
     error NothingToClaim();
@@ -92,12 +91,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
 
     /// @notice Error thrown when an attempt is made to remove more incentives than are available.
     error RemovalLimitExceeded();
-
-    /// @dev Modifier restricting the caller to the IncentiveLocker.
-    modifier onlyIncentiveLocker() {
-        require(msg.sender == address(incentiveLocker), OnlyIncentiveLocker());
-        _;
-    }
 
     /// @notice Constructs the UmaMerkleChefAV.
     /// @param _owner The initial owner of the contract.
@@ -133,17 +126,19 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         override
         onlyIncentiveLocker
     {
-        // Decode the action params and extract the campaign duration
-        (uint32 startTimestamp, uint32 endTimestamp,,) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
+        // Decode the action params to get the campaign timestamps
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
         // Check that the duration is valid
-        require(endTimestamp > startTimestamp, InvalidCampaignDuration());
+        require(params.endTimestamp > params.startTimestamp, InvalidCampaignDuration());
 
         // Store the campaign duration
-        incentiveCampaignIdToInterval[_incentiveCampaignId] = (uint64(startTimestamp) << 32) | uint64(endTimestamp);
+        incentiveCampaignIdToInterval[_incentiveCampaignId] = (uint80(params.startTimestamp) << 40) | uint80(params.endTimestamp);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.INIT_STREAMS, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesOffered, _incentiveAmountsOffered);
+        _modifyIncentiveStreams(
+            Modification.INIT_STREAMS, _incentiveCampaignId, params.startTimestamp, params.endTimestamp, _incentivesOffered, _incentiveAmountsOffered
+        );
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
@@ -162,32 +157,37 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         onlyIncentiveLocker
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
+        _modifyIncentiveStreams(Modification.INCREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesAdded, _incentiveAmountsAdded);
     }
 
     /// @notice Processes the removal of incentives for a given campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
     /// @param _incentivesRemoved The list of  removed from the campaign.
     /// @param _incentiveAmountsRemoved The corresponding amounts removed for each incentive token.
+    /// @param _ip The address of the IP
     function processIncentivesRemoved(
         bytes32 _incentiveCampaignId,
         address[] memory _incentivesRemoved,
         uint256[] memory _incentiveAmountsRemoved,
         bytes memory, /*_removalParams*/
-        address /*_ip*/
+        address _ip
     )
         external
         override
         onlyIncentiveLocker
     {
+        // Only the main campaign IP can remove incentives for this Acition Verifier
+        (, address ip) = IncentiveLocker(incentiveLocker).incentiveCampaignExists(_incentiveCampaignId);
+        require(_ip == ip, OnlyMainIP());
+
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Apply the modification to streams
-        _modifyIncentiveStreams(Modifications.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
+        _modifyIncentiveStreams(Modification.DECREASE_RATE, _incentiveCampaignId, startTimestamp, endTimestamp, _incentivesRemoved, _incentiveAmountsRemoved);
     }
 
     /// @notice Processes a claim by validating the provided parameters.
@@ -206,16 +206,17 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         onlyIncentiveLocker
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed)
     {
-        // Decode the claim parameters to retrieve the ratio owed and Merkle proof.
+        // Decode the claim parameters to retrieve the incentives amount owed and merkle proof to verify.
         ClaimParams memory params = abi.decode(_claimParams, (ClaimParams));
+
         // Verify each incentive to claim has a corresponding amount owed
         uint256 numIncentivesToClaim = params.incentives.length;
-        require(numIncentivesToClaim == params.incentiveAmountsOwed.length, ArrayLengthMismatch());
+        require(numIncentivesToClaim == params.totalIncentiveAmountsOwed.length, ArrayLengthMismatch());
 
         // Fetch the current Merkle root associated with this incentiveCampaignId.
         bytes32 merkleRoot = incentiveCampaignIdToMerkleRoot[_incentiveCampaignId];
         // Compute the leaf from the user's address and ratio, then check if already claimed.
-        bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.incentiveAmountsOwed));
+        bytes32 leaf = keccak256(abi.encode(_ap, params.incentives, params.totalIncentiveAmountsOwed));
         // Verify the proof against the stored Merkle root.
         require(MerkleProof.verify(params.merkleProof, merkleRoot, leaf), InvalidMerkleProof());
 
@@ -225,14 +226,18 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         incentiveAmountsOwed = new uint256[](numIncentivesToClaim);
         for (uint256 i = 0; i < numIncentivesToClaim; ++i) {
             address incentive = params.incentives[i];
+            uint256 totalAmountOwed = params.totalIncentiveAmountsOwed[i];
+
             // Calculate the unclaimed incentive amount: total owed - already claimed
-            uint256 unclaimedIncentiveAmount = params.incentiveAmountsOwed[i] - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
+            uint256 unclaimedIncentiveAmount = totalAmountOwed - incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive];
+
+            // If something to claim, append it to the amounts owed array
             if (unclaimedIncentiveAmount > 0) {
                 // Set the incentive and unclaimed amount in the array
                 incentives[numNonZeroIncentives] = incentive;
                 incentiveAmountsOwed[numNonZeroIncentives++] = unclaimedIncentiveAmount;
                 // Mark everything as claimed
-                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = params.incentiveAmountsOwed[i];
+                incentiveCampaignIdToApToAmountsClaimed[_incentiveCampaignId][_ap][incentive] = totalAmountOwed;
             }
         }
 
@@ -244,9 +249,6 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
             mstore(incentives, numNonZeroIncentives)
             mstore(incentiveAmountsOwed, numNonZeroIncentives)
         }
-
-        // Return the incentives and amounts owed to the incentive locker
-        return (incentives, incentiveAmountsOwed);
     }
 
     /// @notice Returns the maximum amounts that can be removed from a given campaign for the specified incentives.
@@ -259,10 +261,11 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     )
         external
         view
+        override
         returns (uint256[] memory maxRemovableIncentiveAmounts)
     {
         // Get the start and end timestamps for the campaign
-        (uint32 startTimestamp, uint32 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
+        (uint40 startTimestamp, uint40 endTimestamp) = _getCampaignTimestamps(_incentiveCampaignId);
 
         // Check if the campaign is in progress
         bool campaignInProgress = block.timestamp > startTimestamp;
@@ -288,10 +291,10 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     /// @param _incentives The array of incentives.
     /// @param _incentiveAmounts The corresponding amounts for each incentive.
     function _modifyIncentiveStreams(
-        Modifications _modification,
+        Modification _modification,
         bytes32 _incentiveCampaignId,
-        uint32 _startTimestamp,
-        uint32 _endTimestamp,
+        uint40 _startTimestamp,
+        uint40 _endTimestamp,
         address[] memory _incentives,
         uint256[] memory _incentiveAmounts
     )
@@ -299,14 +302,14 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
     {
         // Can't add/remove incentives from streams after the campaign ended
         // Can create retroactive campaigns
-        require(_modification == Modifications.INIT_STREAMS || block.timestamp < _endTimestamp, CampaignEnded());
+        require(_modification == Modification.INIT_STREAMS || block.timestamp < _endTimestamp, CampaignEnded());
 
         // Make modifications to the appropriate incentive streams
         uint256 numIncentives = _incentives.length;
         uint256[] memory updatedRates = new uint256[](numIncentives);
         for (uint256 i = 0; i < numIncentives; ++i) {
             // If creating a new campaign
-            if (_modification == Modifications.INIT_STREAMS) {
+            if (_modification == Modification.INIT_STREAMS) {
                 // Initialize the rate on creation
                 updatedRates[i] = (_incentiveAmounts[i]).divWadDown(_endTimestamp - _startTimestamp);
                 // If adding or removing incentives from an already created campaign
@@ -321,10 +324,10 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
                 uint256 unstreamedIncentives = currentRate.mulWadDown(remainingCampaignDuration);
 
                 // If adding incentives
-                if (_modification == Modifications.INCREASE_RATE) {
+                if (_modification == Modification.INCREASE_RATE) {
                     // Add unstreamed incentives to what you are adding and recalculate the rate for the remaining campaign
                     updatedRates[i] = (unstreamedIncentives + _incentiveAmounts[i]).divWadDown(remainingCampaignDuration);
-                } else if (_modification == Modifications.DECREASE_RATE) {
+                } else if (_modification == Modification.DECREASE_RATE) {
                     // Check that you are only removing from unstreamed incentives
                     require(_incentiveAmounts[i] <= unstreamedIncentives, RemovalLimitExceeded());
                     // Substract what you are removing from unstreamed incentives and recalculate the rate for the remaining campaign
@@ -373,11 +376,8 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
         override
         returns (bytes memory claim)
     {
-        // Decode the action params and extract the avmVersion and avmParams
-        (,, string memory avmVersion, bytes memory avmParams) = abi.decode(_actionParams, (uint32, uint32, string, bytes));
-
-        // Cast the AVM params to a string for readability
-        string memory avmParamsStr = string(avmParams);
+        // Decode the action params to extract the avmVersion and avmParams
+        ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
         // Marshal the UMA claim for this assertion
         claim = abi.encodePacked(
@@ -398,22 +398,22 @@ contract UmaMerkleChefAV is IActionVerifier, UmaMerkleOracleBase {
             "\n",
             "AVM Implementation: https://github.com/roycoprotocol/royco-avm \n",
             "AVM Version: ",
-            avmVersion,
+            params.avmVersion,
             "\n",
             "AVM Params: ",
-            avmParamsStr
+            string(params.avmParams)
         );
     }
 
     /// @notice Returns the start and end timestamps for a given incentive campaign.
     /// @param _incentiveCampaignId The unique identifier for the incentive campaign.
-    /// @return startTimestamp The start timestamp stored in the upper 32 bits.
-    /// @return endTimestamp The end timestamp stored in the lower 32 bits.
-    function _getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint32 startTimestamp, uint32 endTimestamp) {
-        uint64 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
-        // Shift right to get the upper 32 bits
-        startTimestamp = uint32(duration >> 32);
-        // Simple cast to get the lower 32 bits
-        endTimestamp = uint32(duration);
+    /// @return startTimestamp The start timestamp stored in the upper 40 bits.
+    /// @return endTimestamp The end timestamp stored in the lower 40 bits.
+    function _getCampaignTimestamps(bytes32 _incentiveCampaignId) internal view returns (uint40 startTimestamp, uint40 endTimestamp) {
+        uint80 duration = incentiveCampaignIdToInterval[_incentiveCampaignId];
+        // Shift right to get the upper 40 bits
+        startTimestamp = uint40(duration >> 40);
+        // Simple cast to get the lower 40 bits
+        endTimestamp = uint40(duration);
     }
 }

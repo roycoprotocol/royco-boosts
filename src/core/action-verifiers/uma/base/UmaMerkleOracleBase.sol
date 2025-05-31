@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import { Ownable, Ownable2Step } from "../../../../../lib/openzeppelin-contracts/contracts/access/Ownable2Step.sol";
+import { ActionVerifierBase } from "../../base/ActionVerifierBase.sol";
 import { OptimisticOracleV3Interface, IERC20 } from "../../../../interfaces/OptimisticOracleV3Interface.sol";
 import { OptimisticOracleV3CallbackRecipientInterface } from "../../../../interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
 import { IncentiveLocker } from "../../../../core/IncentiveLocker.sol";
@@ -15,15 +16,13 @@ import { AncillaryData } from "../../../../libraries/AncillaryData.sol";
 ///         or dispute of each assertion, and integrates with Royco's IncentiveLocker.
 /// @dev This contract is meant to be inherited by ActionVerifiers (AVs) that use UMA for posting
 ///      and validating merkle roots for incentive claims.
-abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3CallbackRecipientInterface {
+abstract contract UmaMerkleOracleBase is Ownable2Step, ActionVerifierBase, OptimisticOracleV3CallbackRecipientInterface {
     using SafeTransferLib for ERC20;
 
     /// @notice The UMA Optimistic Oracle V3 used for assertions.
     OptimisticOracleV3Interface public immutable oo;
     /// @notice The default identifier used by the Optimistic Oracle.
     bytes32 public immutable defaultIdentifier;
-    /// @notice The IncentiveLocker contract used to store incentives and associated data.
-    IncentiveLocker public immutable incentiveLocker;
 
     /// @notice A mapping from an asserter address to a flag indicating whether they are whitelisted or not.
     mapping(address asserter => bool whitelisted) public asserterToIsWhitelisted;
@@ -112,13 +111,11 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
         uint64 _assertionLiveness
     )
         Ownable(_owner)
+        ActionVerifierBase(_incentiveLocker)
     {
         // Setup OO V3
         oo = OptimisticOracleV3Interface(_optimisticOracleV3);
         defaultIdentifier = oo.defaultIdentifier();
-
-        // Set Incentive Locker
-        incentiveLocker = IncentiveLocker(_incentiveLocker);
 
         // Whitelist the specified asserters
         uint256 numAsserters = _whitelistedAsserters.length;
@@ -162,7 +159,8 @@ abstract contract UmaMerkleOracleBase is Ownable2Step, OptimisticOracleV3Callbac
     /// @return assertionId The unique ID returned by UMA for the new assertion.
     function assertMerkleRoot(bytes32 _incentiveCampaignId, bytes32 _merkleRoot, uint256 _bondAmount) external virtual returns (bytes32 assertionId) {
         // Retrieve data from the IncentiveLocker for this incentive ID.
-        (, address ip, address actionVerifier, bytes memory actionParams) = incentiveLocker.getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
+        (, address ip, address actionVerifier, bytes memory actionParams) =
+            IncentiveLocker(incentiveLocker).getIncentiveCampaignVerifierAndParams(_incentiveCampaignId);
 
         // Ensure only an authorized asserter can assert the Merkle root.
         require(asserterToIsWhitelisted[msg.sender] || msg.sender == ip, UnauthorizedAsserter());

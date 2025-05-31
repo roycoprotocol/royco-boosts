@@ -45,6 +45,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Mapping of fee claimants to accrued fees for each incentive token.
     mapping(address claimant => mapping(address token => uint256 amountOwed)) public feeClaimantToTokenToAmount;
 
+    /// @notice Maximum number of incentives per campaign
+    uint256 public constant MAX_INCENTIVES_PER_CAMPAIGN = 20;
+
     /// @notice Protocol fee rate (1e18 equals 100% fee).
     uint64 public defaultProtocolFee;
 
@@ -107,10 +110,11 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     );
 
     /// @notice Emitted when fees are claimed.
-    /// @param claimant The address that claimed the fees.
     /// @param incentive The address of the incentive claimed as a fee.
+    /// @param claimant The address that claimed the fees.
+    /// @param recipient The address that received the claimed fees.
     /// @param amount The amount of fees claimed.
-    event FeesClaimed(address indexed claimant, address indexed incentive, uint256 amount);
+    event FeesClaimed(address indexed incentive, address indexed claimant, address indexed recipient, uint256 amount);
 
     /// @notice Emitted when the default protocol fee claimant is set.
     /// @param newDefaultProtocolFeeClaimant Address allowed to claim protocol fees.
@@ -140,10 +144,10 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     error CannotProcessDuplicateIncentives();
 
     /// @notice Thrown when an attempt is made to add zero incentive amounts.
-    error CannotOfferZeroIncentives(address incentive);
+    error CannotOfferZeroIncentives();
 
-    /// @notice Thrown when an attempt is made to remove zero incentive amounts.
-    error CannotRemoveZeroIncentives(address incentive);
+    /// @notice Thrown when an attempt is made to add more incentives than the maximum.
+    error MaxNumIncentivesExceeded();
 
     /// @notice Initializes the IncentiveLocker contract.
     /// @param _owner Address of the contract owner.
@@ -278,9 +282,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         // Check that all incentives have a corresponding amount
         require(numIncentives == _incentiveAmountsToRemove.length, ArrayLengthMismatch());
 
-        // Only the IP can remove incentives
+        // Only the IP or a whitelisted coIP can remove incentives
         ICS storage ics = incentiveCampaignIdToICS[_incentiveCampaignId];
-        require(msg.sender == ics.ip, OnlyIP());
+        require(msg.sender == ics.ip || ics.coIpToWhitelisted[msg.sender], OnlyIP());
 
         address lastIncentive;
         for (uint256 i = 0; i < numIncentives; ++i) {
@@ -290,17 +294,24 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
             lastIncentive = incentive;
 
-            // Update ICS accounting
             uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
-            // Check that the incentive amount to remove is non-zero
-            require(incentiveAmountRemoved > 0, CannotRemoveZeroIncentives(incentive));
 
-            // Account for the refund
+            // Update ICS accounting
+            // If removing more than is left, assume they want to remove the rest since this tx might have been frontrun by a claim.
+            if (incentiveAmountRemoved >= ics.incentiveToAmountRemaining[incentive]) {
+                // Get the max amount they can remove
+                incentiveAmountRemoved = ics.incentiveToAmountRemaining[incentive];
+                _incentiveAmountsToRemove[i] = incentiveAmountRemoved;
+                // Account for a max refund
+                delete ics.incentiveToAmountRemaining[incentive];
+            } else {
+                // Account for the refund
+                ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
+            }
+
             ics.incentiveToAmountOffered[incentive] -= incentiveAmountRemoved;
-            ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
-
-            // If no incentives were ever spent, update the ICS array to reflect the removal
             if (ics.incentiveToAmountOffered[incentive] == 0) {
+                // Update the ICS array to reflect the removal
                 _removeIncentiveFromCampaign(ics, incentive);
             }
 
@@ -378,12 +389,12 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
     /// @notice Claims accrued fees for a given incentive token.
     /// @param _incentiveToken The address of the incentive token.
-    /// @param _to The recipient address for the claimed fees.
-    function claimFees(address _incentiveToken, address _to) external nonReentrant {
+    /// @param _recipient The recipient address for the claimed fees.
+    function claimFees(address _incentiveToken, address _recipient) external nonReentrant {
         uint256 amount = feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
         delete feeClaimantToTokenToAmount[msg.sender][_incentiveToken];
-        ERC20(_incentiveToken).safeTransfer(_to, amount);
-        emit FeesClaimed(msg.sender, _incentiveToken, amount);
+        ERC20(_incentiveToken).safeTransfer(_recipient, amount);
+        emit FeesClaimed(_incentiveToken, msg.sender, _recipient, amount);
     }
 
     /// @notice Returns the state for the specified incentive campaign.
@@ -608,7 +619,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
 
             uint256 incentiveAmount = _incentiveAmountsOffered[i];
             // Make sure the amount is non-zero
-            require(incentiveAmount > 0, CannotOfferZeroIncentives(incentive));
+            require(incentiveAmount > 0, CannotOfferZeroIncentives());
 
             // Check if incentive is a points program
             if (isPointsProgram(incentive)) {
@@ -632,6 +643,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             _ics.incentiveToAmountOffered[incentive] += incentiveAmount;
             _ics.incentiveToAmountRemaining[incentive] += incentiveAmount;
         }
+
+        // Ensure that the number of incentives in the campaign don't exceed the maximum
+        require(_ics.incentivesOffered.length <= MAX_INCENTIVES_PER_CAMPAIGN, MaxNumIncentivesExceeded());
     }
 
     /// @notice Processes a single incentive claim for a given incentive campaign.

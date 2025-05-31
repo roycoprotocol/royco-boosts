@@ -24,7 +24,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Compute a query timestamp based on the fuzzed skip percentage
@@ -63,7 +63,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Calculate expected unspent amounts - for unstarted campaign, should be the full initial rates * campaign length
@@ -95,7 +95,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Warp to near the end of the campaign based on remaining percentage
@@ -134,7 +134,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Select a subset of incentives to query (half of them)
@@ -189,7 +189,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
-        bytes memory actionParams = abi.encode(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams"));
+        bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Compute timestamps for removal and query based on fuzzed percentages
