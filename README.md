@@ -1,4 +1,4 @@
-# Royco V2: The Incentivize Anything Protocol [![Tests](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml)
+# Royco V2: Incentivize Anything [![Tests](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml)
 ![Royco Banner](./roycobanner.png)
 
 ## Overview
