@@ -25,6 +25,11 @@ contract IncentraAV is ActionVerifierBase {
     /// @notice A mapping from incentive campaign ID to its Incentra campaign parameters.
     mapping(bytes32 id => ActionParams params) incentiveCampaignIdToCampaignParams;
 
+    /// @notice A mapping from an Incentra campaign to if it has been initialized as a Royco campaign.
+    mapping(address incentraCampaign => bool initialized) incentraCampaignToIsInitialized;
+
+    /// @notice Error thrown when trying to create a campaign with an campaign address that doesn't allow this AV to process claims.
+    error IncentraCampaignAlreadyInitialized();
     /// @notice Error thrown when trying to create a campaign with an campaign address that doesn't allow this AV to process claims.
     error IncentraPayoutAddressMustBeAV();
     /// @notice Error thrown when trying to add incentives to an Incentra campaign.
@@ -52,11 +57,17 @@ contract IncentraAV is ActionVerifierBase {
         // Decode the campaign params
         ActionParams memory params = abi.decode(_actionParams, (ActionParams));
 
+        require(!incentraCampaignToIsInitialized[params.incentraCampaign], IncentraCampaignAlreadyInitialized());
         // Check that the AV can process claims and refunds for this campaign
         require(IIncentraCampaign(params.incentraCampaign).externalPayoutAddress() == address(this), IncentraPayoutAddressMustBeAV());
 
+        // TODO: Check that the incentive addresses and amounts match that in the Incentra Campaign contract
+
         // Store the campaign parameters in persistent storage
         incentiveCampaignIdToCampaignParams[_incentiveCampaignId] = params;
+
+        // Mark this incentra campaign as initialized as a Royco campaign
+        incentraCampaignToIsInitialized[params.incentraCampaign] = true;
     }
 
     /// @notice Processes the addition of incentives for a given campaign.
