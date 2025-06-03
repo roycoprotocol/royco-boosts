@@ -74,16 +74,14 @@ contract RoycoTestBase is Test {
 
     function setupUmaMerkleChefBaseEnvironment() public virtual {
         // Fork Mainnet
-        fork = vm.createFork(MAINNET_RPC_URL);
-        vm.rollFork(fork, 22_600_917);
+        fork = vm.createFork(MAINNET_RPC_URL, 22_600_917);
         setupWallets();
         setUpMerkleChefContracts();
     }
 
     function setupDumbBaseEnvironment() public virtual {
         // Fork Mainnet
-        fork = vm.createFork(MAINNET_RPC_URL);
-        vm.rollFork(fork, 22_600_917);
+        fork = vm.createFork(MAINNET_RPC_URL, 22_600_917);
         setupWallets();
         setUpDumbContracts();
     }
