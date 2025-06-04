@@ -82,7 +82,7 @@ contract IncentraAV is ActionVerifierBase {
         // Store the campaign parameters in persistent storage
         incentiveCampaignIdToCampaignParams[_incentiveCampaignId] = params;
 
-        // Mark this incentra campaign as initialized as a Royco campaign
+        // Mark this Incentra campaign as initialized as a Royco campaign
         incentraCampaignToIsInitialized[params.incentraCampaign] = true;
     }
 
