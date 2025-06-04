@@ -22,7 +22,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
             uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numRemoved, _campaignLength, _removalParams))) % (_campaignLength - 1)));
 
         // Generate initial incentives (10 tokens) and amounts.
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -99,7 +99,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
             uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numRemoved, _campaignLength, _removalParams))) % (_campaignLength - 1)));
 
         // Generate initial incentives (10 tokens) and amounts.
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), 10);
 
         // Encode campaign parameters and create the incentive campaign.
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -140,7 +140,7 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
         uint32 removalTimestamp =
             uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numRemoved, _campaignLength, _removalParams))) % (_campaignLength - 1)));
 
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), 10);
 
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);

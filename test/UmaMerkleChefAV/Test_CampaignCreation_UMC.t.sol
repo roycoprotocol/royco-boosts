@@ -24,7 +24,7 @@ contract Test_CampaignCreation_UMC is RoycoTestBase {
 
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(_startTimestamp, _endTimestamp, "^0.0.0", bytes("avmParams")));
 
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, _numIncentivesOffered);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, _numIncentivesOffered);
 
         for (uint256 i = 0; i < incentivesOffered.length; ++i) {
             if (incentiveLocker.isPointsProgram(incentivesOffered[i])) {

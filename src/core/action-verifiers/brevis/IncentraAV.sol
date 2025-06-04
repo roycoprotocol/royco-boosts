@@ -6,6 +6,7 @@ import { IncentiveLocker } from "../../IncentiveLocker.sol";
 import { IIncentraCampaign } from "../../../interfaces/IIncentraCampaign.sol";
 
 /// @title IncentraAV
+/// @author Shivaansh Kapoor, Jack Corddry
 /// @notice The Incentra Action Verifier is used for Royco incentive campaigns powered by Incentra.
 contract IncentraAV is ActionVerifierBase {
     /// @notice An enum representing the modality of reward data submissions for the Incentra campaign.

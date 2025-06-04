@@ -2,7 +2,8 @@
 pragma solidity ^0.8.0;
 
 /// @title PointsRegistry
-/// @notice Abstract contract for managing points programs and associated spending caps.
+/// @author Shivaansh Kapoor, Jack Corddry
+/// @notice Abstract contract for creating and managing points programs on Royco.
 abstract contract PointsRegistry {
     /// @notice Struct representing a points program.
     /// @custom:field owner The owner of the points program.

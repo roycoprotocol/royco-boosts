@@ -41,7 +41,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
 
         vm.startPrank(_ip);
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
         bytes memory actionParams =
             abi.encode(UmaMerkleChefAV.ActionParams(uint40(block.timestamp), uint40(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =
@@ -83,7 +83,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
 
         vm.startPrank(_ip);
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
         bytes memory actionParams =
             abi.encode(UmaMerkleChefAV.ActionParams(uint40(block.timestamp), uint40(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =
@@ -126,7 +126,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
 
         vm.startPrank(_ip);
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, 10);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
         bytes memory actionParams =
             abi.encode(UmaMerkleChefAV.ActionParams(uint32(block.timestamp), uint32(block.timestamp + 60 days), "^0.0.0", bytes("avmParams")));
         bytes32 incentiveCampaignId =

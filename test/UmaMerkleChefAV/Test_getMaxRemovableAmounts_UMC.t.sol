@@ -21,7 +21,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives and amounts
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -60,7 +60,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives and amounts
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -92,7 +92,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives and amounts
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -131,7 +131,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives and amounts
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));
@@ -186,7 +186,7 @@ contract Test_getMaxRemovableIncentiveAmounts is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives and amounts
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), _numIncentives);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), _numIncentives);
 
         // Encode campaign parameters and create the incentive campaign
         bytes memory actionParams = abi.encode(UmaMerkleChefAV.ActionParams(campaignStart, campaignEnd, "^0.0.0", bytes("avmParams")));

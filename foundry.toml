@@ -15,9 +15,6 @@ via_ir = true
 fuzz_runs = 50
 deny_warnings = false
 
-[fuzz]
-seed = "0x3ff7210ab8230ac90b0bf938531e8fa25478d9f0272178a006ea726c64671798"
-
 [profile.default.optimizer_details]
 constantOptimizer = true
 yul = true

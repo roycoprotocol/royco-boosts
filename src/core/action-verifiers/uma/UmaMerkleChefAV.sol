@@ -6,6 +6,7 @@ import { MerkleProof } from "../../../../lib/openzeppelin-contracts/contracts/ut
 import { FixedPointMathLib } from "../../../../lib/solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title UmaMerkleChefAV
+/// @author Shivaansh Kapoor, Jack Corddry
 /// @notice The Merkle Chef enables oracle based streaming for incentive campaigns created in the IncentiveLocker.
 ///         Emission rates can be modified during the campaign and are emitted by the MerkleChef.
 ///         An offchain oracle retrieves all rates during the campaign to compute incentive remittances per AP.

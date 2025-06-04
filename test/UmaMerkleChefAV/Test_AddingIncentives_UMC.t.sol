@@ -18,7 +18,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives for the campaign.
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), 10);
 
         // Compute a random addition timestamp between campaignStart and campaignEnd.
         uint32 additionTimestamp = uint32(campaignStart + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
@@ -28,7 +28,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Generate additional incentives to be added.
-        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
+        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRealRandomIncentives(address(this), _numAdded);
 
         // Save the current rates for each incentive being added.
         uint256[] memory initialRates = new uint256[](addedIncentives.length);
@@ -96,7 +96,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         uint32 campaignEnd = campaignStart + _campaignLength;
 
         // Generate initial incentives for the campaign.
-        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRandomIncentives(address(this), 10);
+        (address[] memory initialIncentives, uint256[] memory initialAmounts) = _generateRealRandomIncentives(address(this), 10);
 
         // Compute a random addition timestamp between campaignStart and campaignEnd.
         uint32 additionTimestamp = uint32(campaignEnd + 1 + (uint256(keccak256(abi.encode(_numAdded, _campaignLength))) % _campaignLength));
@@ -106,7 +106,7 @@ contract Test_AddingIncentives_UMC is RoycoTestBase {
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, initialIncentives, initialAmounts);
 
         // Generate additional incentives to be added.
-        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRandomIncentives(address(this), _numAdded);
+        (address[] memory addedIncentives, uint256[] memory addedAmounts) = _generateRealRandomIncentives(address(this), _numAdded);
 
         // Warp to the addition timestamp.
         vm.warp(additionTimestamp);

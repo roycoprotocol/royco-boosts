@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import { IActionVerifier } from "../../../interfaces/IActionVerifier.sol";
 
 /// @title ActionVerifierBase
+/// @author Shivaansh Kapoor, Jack Corddry
 /// @notice A base contract for ActionVerifiers (AVs) with basic state and behavior.
 abstract contract ActionVerifierBase is IActionVerifier {
     /// @notice The IncentiveLocker contract used to store incentives and associated data.

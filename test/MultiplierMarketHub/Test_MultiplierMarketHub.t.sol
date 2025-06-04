@@ -17,7 +17,7 @@ contract Test_MultiplierMarketHub is RoycoTestBase {
         ip = address(bytes20(keccak256(abi.encode(address(multiplierMarketHub), block.timestamp, block.number))));
 
         vm.startPrank(ip);
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(ip, 10);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(ip, 10);
         incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(dumbAV), new bytes(0), incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
     }

@@ -10,6 +10,7 @@ import { PointsRegistry } from "./base/PointsRegistry.sol";
 import { IActionVerifier } from "../interfaces/IActionVerifier.sol";
 
 /// @title IncentiveLocker
+/// @author Shivaansh Kapoor, Jack Corddry
 /// @notice A singleton contract responsible for creating incentive campaigns, adding and removing incentives to/from existing campaigns, fee accounting, and
 ///         facilitating incentive claims for all Royco V2 campaigns. It interfaces with Action Verifiers to process campaign creations, modifications, and
 ///         incentive claims. Additionally, maintains a points program registry which streamlines points program creation, delegation, and awarding users.

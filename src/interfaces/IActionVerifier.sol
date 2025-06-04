@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 /// @title IActionVerifier
+/// @author Shivaansh Kapoor, Jack Corddry
 /// @notice ActionVerifier interface for processing incentive campaign creation, modifications, and claims.
 /// @dev ActionVerifiers implementing this interface should revert internally if the action results in an invalid campaign state.
 interface IActionVerifier {

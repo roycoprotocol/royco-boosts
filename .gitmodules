@@ -10,3 +10,6 @@
 [submodule "lib/uma-protocol"]
 	path = lib/uma-protocol
 	url = https://github.com/UMAprotocol/protocol
+[submodule "lib/incentra-contracts"]
+	path = lib/incentra-contracts
+	url = https://github.com/brevis-network/incentra-contracts

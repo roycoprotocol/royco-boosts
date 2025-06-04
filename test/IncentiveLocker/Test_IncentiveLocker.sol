@@ -22,7 +22,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
         vm.assume(_ip != address(0) && _ip != address(1));
         _numIncentivesOffered = uint8(bound(_numIncentivesOffered, 1, 10));
 
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(_ip, _numIncentivesOffered);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, _numIncentivesOffered);
 
         for (uint256 i = 0; i < incentivesOffered.length; ++i) {
             if (incentiveLocker.isPointsProgram(incentivesOffered[i])) {
@@ -67,7 +67,7 @@ contract Test_IncentiveLocker is RoycoTestBase {
     function test_RevertIf_ZeroIncentiveAmountOffered(uint8 _numIncentivesOffered) external {
         _numIncentivesOffered = uint8(bound(_numIncentivesOffered, 1, 10));
 
-        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRandomIncentives(address(this), _numIncentivesOffered);
+        (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(address(this), _numIncentivesOffered);
 
         uint256 zeroAmountIndex = uint256(keccak256(abi.encode(incentivesOffered, incentiveAmountsOffered, _numIncentivesOffered))) % incentivesOffered.length;
         incentiveAmountsOffered[zeroAmountIndex] = 0;

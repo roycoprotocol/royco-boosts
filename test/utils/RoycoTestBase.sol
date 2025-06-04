@@ -5,7 +5,9 @@ import "../../lib/forge-std/src/Test.sol";
 import "../../lib/forge-std/src/Vm.sol";
 
 import { IncentiveLocker, PointsRegistry, ERC20, SafeTransferLib } from "../../src/core/IncentiveLocker.sol";
+import { MockERC20 } from "./MockERC20.sol";
 import { UmaMerkleChefAV, UmaMerkleOracleBase } from "../../src/core/action-verifiers/uma/UmaMerkleChefAV.sol";
+import { IncentraAV } from "../../src/core/action-verifiers/brevis/IncentraAV.sol";
 import { DumbAV } from "./DumbAV.sol";
 
 contract RoycoTestBase is Test {
@@ -62,6 +64,7 @@ contract RoycoTestBase is Test {
 
     IncentiveLocker public incentiveLocker;
     UmaMerkleChefAV public umaMerkleChefAV;
+    IncentraAV public incentraAV;
     DumbAV public dumbAV;
 
     uint256 fork;
@@ -77,6 +80,11 @@ contract RoycoTestBase is Test {
         fork = vm.createFork(MAINNET_RPC_URL, 22_600_917);
         setupWallets();
         setUpMerkleChefContracts();
+    }
+
+    function setupIncentraBaseEnvironment() public virtual {
+        setupWallets();
+        setUpIncentraContracts();
     }
 
     function setupDumbBaseEnvironment() public virtual {
@@ -119,6 +127,12 @@ contract RoycoTestBase is Test {
             new UmaMerkleChefAV(OWNER_ADDRESS, UMA_OOV3_ETH_MAINNET, address(incentiveLocker), new address[](0), USDC_ADDRESS_ETH_MAINNET, SECONDS_IN_A_DAY);
     }
 
+    function setUpIncentraContracts() public {
+        // Deploy the Royco V2 contracts
+        incentiveLocker = new IncentiveLocker(OWNER_ADDRESS, DEFAULT_PROTOCOL_FEE_CLAIMANT_ADDRESS, DEFAULT_PROTOCOL_FEE);
+        incentraAV = new IncentraAV(address(incentiveLocker));
+    }
+
     function setUpDumbContracts() public {
         vm.selectFork(fork);
         // Deploy the Royco V2 contracts
@@ -126,7 +140,7 @@ contract RoycoTestBase is Test {
         dumbAV = new DumbAV();
     }
 
-    function _generateRandomIncentives(
+    function _generateRealRandomIncentives(
         address _ip,
         uint8 _numIncentivesOffered
     )
@@ -155,6 +169,58 @@ contract RoycoTestBase is Test {
                 incentiveAmountsOffered[i] = bound(rand, 1 * decimalFactor, 10_000_000 * decimalFactor);
                 deal(candidate, _ip, type(uint96).max);
                 ERC20(candidate).safeApprove(address(incentiveLocker), type(uint96).max);
+            } else {
+                // If odd, make it a points incentive.
+                // Create a points program with dummy parameters.
+                string memory name = "RandomPoints";
+                string memory symbol = "RPTS";
+                uint8 decimals = 18;
+                address pointsId = incentiveLocker.createPointsProgram(name, symbol, decimals, new address[](0), new uint256[](0));
+                incentivesOffered[i] = pointsId;
+                incentiveAmountsOffered[i] = bound(rand, 1e18, 10_000_000e18);
+            }
+        }
+
+        // Sort the arrays based on incentivesOffered in ascending order.
+        // This simple selection sort (or bubble sort) swaps both arrays so that the pairing is maintained.
+        for (uint8 i = 0; i < _numIncentivesOffered; i++) {
+            for (uint8 j = i + 1; j < _numIncentivesOffered; j++) {
+                if (uint256(bytes32(bytes20(incentivesOffered[i]))) > uint256(bytes32(bytes20(incentivesOffered[j])))) {
+                    // Swap incentive amounts.
+                    uint256 tempAmount = incentiveAmountsOffered[i];
+                    incentiveAmountsOffered[i] = incentiveAmountsOffered[j];
+                    incentiveAmountsOffered[j] = tempAmount;
+                    // Swap the corresponding incentive tokens.
+                    address tempToken = incentivesOffered[i];
+                    incentivesOffered[i] = incentivesOffered[j];
+                    incentivesOffered[j] = tempToken;
+                }
+            }
+        }
+    }
+
+    function _generateFakeRandomIncentives(
+        address _ip,
+        uint8 _numIncentivesOffered
+    )
+        public
+        returns (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered)
+    {
+        // Initialize arrays for incentive tokens and their offered amounts.
+        incentivesOffered = new address[](_numIncentivesOffered);
+        incentiveAmountsOffered = new uint256[](_numIncentivesOffered);
+
+        // Generate random incentives and amounts.
+        for (uint8 i = 0; i < _numIncentivesOffered; i++) {
+            uint256 rand = uint256(keccak256(abi.encodePacked(i, _ip, block.timestamp)));
+            if (rand % 2 == 0) {
+                // If even, make it a token incentive.
+                address token = address(new MockERC20(string(abi.encodePacked("Test Token ", rand)), string(abi.encodePacked("TEST ", rand))));
+                incentivesOffered[i] = token;
+                uint256 decimalFactor = 10 ** 18;
+                incentiveAmountsOffered[i] = bound(rand, 1 * decimalFactor, 10_000_000 * decimalFactor);
+                MockERC20(token).mint(_ip, incentiveAmountsOffered[i]);
+                ERC20(token).safeApprove(address(incentiveLocker), type(uint96).max);
             } else {
                 // If odd, make it a points incentive.
                 // Create a points program with dummy parameters.
