@@ -36,7 +36,7 @@ Action Verifiers are modules which define market types on Royco V2. While the In
 When rewards are added to or claimed from the Incentive Locker, the IncentiveLocker calls hooks on the ActionVerifiers, which are responsible for determining the exact behavior of how to initialize or how verify reward payouts, in other words: how to verify the completion of an incentivized action.
 
 #### UMA Merkle Chef
-While others are in development, the flagship Action Verifier will be the UMA Merkle Chef, which uses UMA’s Optimistic Oracle V3, which allows incentivization of anything that can be publicly discovered deterministically.
+The flagship Action Verifier is the UMA Merkle Chef, which uses UMA’s Optimistic Oracle V3, which allows incentivization of anything that can be publicly discovered deterministically.
 
 Each Royco incentive campaign using the UMA Merkle Chef will have a written commitment which explains how the rewards will be distributed in fine detail, and a link to a executable script that calculates every depositor’s incentives and puts them in a merkle tree. The merkle root is then proposed via UMA and given time to be contested and corrected before being pushed onchain to allow the depositors to claim. This gives the output an inherent antifragile property. Users can catch potential errors in their earned rewards while the campaign is running, and fixes can be found before the results are proposed on UMA. In the worst case scenario, users can go straight to UMA to debate an incorrect root in a fashion similar to Polymarket.
 
@@ -44,3 +44,5 @@ This design allows any incentive qualifications that the IP desires to be expres
 
 UMA Merkle Chef will simply prorate rewards between a start time and an end time at a fixed net rate, similar to the ubiquitous MasterChef style rewards distribution seen throughout DeFi.
 
+#### Incentra
+The Incentra Action Verifier leverages the Brevis network and zkCoprocessor to verify that actions were completed and how many incentives APs are owed. Incentra currently supports verifying payouts for incentive campaigns targeting various AMMs, token holdings, and lending and borrowing protocols.
