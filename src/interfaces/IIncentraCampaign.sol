@@ -2,9 +2,24 @@
 pragma solidity ^0.8.0;
 
 interface IIncentraCampaign {
+    /// @custom:field token An address of an incentive token or points program.
+    /// @custom:field amount The corresponding amount of incentives tokens or points.
+    struct AddrAmt {
+        address token;
+        uint256 amount;
+    }
+
+    /// @notice Returns an array of incentive addresses and their corrsesponding amounts for this campaign.
+    /// @return incentiveAmounts An array of incentive addresses and their corrsesponding amounts for this campaign.
+    function getCampaignRewardConfig() external view returns (AddrAmt[] memory incentiveAmounts);
+
     /// @notice Returns the address that can call the claim function.
     /// @return payoutAddress The address that can call the claim function.
     function externalPayoutAddress() external view returns (address payoutAddress);
+
+    /// @notice Returns a boolean indicating if the remaining incentives can be refunded.
+    /// @return valid A boolean indicating if the remaining incentives can be refunded.
+    function canRefund() external view returns (bool valid);
 
     /// @notice The claim function for same chain campaigns.
     /// @param earner The address of the AP (Action Provider) to claim incentives to.
@@ -27,8 +42,4 @@ interface IIncentraCampaign {
     )
         external
         returns (address[] memory incentives, uint256[] memory incentiveAmountsOwed);
-
-    /// @notice Returns a boolean indicating if the remaining incentives can be refunded.
-    /// @return valid A boolean indicating if the remaining incentives can be refunded.
-    function canRefund() external view returns (bool valid);
 }

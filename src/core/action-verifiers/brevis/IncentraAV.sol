@@ -33,6 +33,10 @@ contract IncentraAV is ActionVerifierBase {
     error IncentraCampaignAlreadyInitialized();
     /// @notice Error thrown when trying to create a campaign with an campaign address that doesn't allow this AV to process claims.
     error IncentraPayoutAddressMustBeAV();
+    /// @notice Error thrown when an Incentra campaign has different incentives offered than the Royco campaign.
+    error ArrayLengthMismatch();
+    /// @notice Error thrown when an Incentra campaign has different incentives offered than the Royco campaign.
+    error IncentivesMismatch();
     /// @notice Error thrown when trying to add incentives to an Incentra campaign.
     error AddingIncentivesNotSupported();
     /// @notice Error thrown when trying to remove incentives from an Incentra campaign before its grace period ends.
@@ -47,8 +51,8 @@ contract IncentraAV is ActionVerifierBase {
     /// @param _actionParams Arbitrary parameters defining the action.
     function processIncentiveCampaignCreation(
         bytes32 _incentiveCampaignId,
-        address[] memory, /*_incentivesOffered*/
-        uint256[] memory, /*_incentiveAmountsOffered*/
+        address[] memory _incentivesOffered,
+        uint256[] memory _incentiveAmountsOffered,
         bytes memory _actionParams,
         address /*_ip*/
     )
@@ -62,7 +66,18 @@ contract IncentraAV is ActionVerifierBase {
         // Check that the AV can process claims and refunds for this campaign
         require(IIncentraCampaign(params.incentraCampaign).externalPayoutAddress() == address(this), IncentraPayoutAddressMustBeAV());
 
-        // TODO: Check that the incentive addresses and amounts match that in the Incentra Campaign contract
+        // Get the incentives offered in the Incentra campaign
+        IIncentraCampaign.AddrAmt[] memory incentraIncentivesAndAmounts = IIncentraCampaign(params.incentraCampaign).getCampaignRewardConfig();
+        // Check that the incentive addresses and amounts match those in the Incentra Campaign contract
+        uint256 numIncentivesOffered = _incentivesOffered.length;
+        require(incentraIncentivesAndAmounts.length == numIncentivesOffered, ArrayLengthMismatch());
+        // Incentives must be set at the same indices for the Royco and Incentra campaigns
+        for (uint256 i = 0; i < numIncentivesOffered; ++i) {
+            require(
+                _incentivesOffered[i] == incentraIncentivesAndAmounts[i].token && _incentiveAmountsOffered[i] == incentraIncentivesAndAmounts[i].amount,
+                IncentivesMismatch()
+            );
+        }
 
         // Store the campaign parameters in persistent storage
         incentiveCampaignIdToCampaignParams[_incentiveCampaignId] = params;
