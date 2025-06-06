@@ -180,7 +180,7 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
         returns (bytes32 incentiveCampaignId)
     {
         // Compute a unique identifier for this incentive campaign
-        incentiveCampaignId = keccak256(abi.encode(++numIncentiveCampaignIds, msg.sender, _actionVerifier, _actionParams));
+        incentiveCampaignId = keccak256(abi.encode(++numIncentiveCampaignIds, _actionVerifier, _actionParams, _incentivesOffered, _incentiveAmountsOffered));
 
         // Store the incentive campaign information in persistent storage
         ICS storage ics = incentiveCampaignIdToICS[incentiveCampaignId];
