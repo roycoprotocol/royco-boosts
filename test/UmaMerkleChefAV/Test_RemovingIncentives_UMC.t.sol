@@ -116,7 +116,8 @@ contract Test_RemovingIncentives_UMC is RoycoTestBase {
             // maxRemovable = initialAmounts[i] * (campaignEnd - removalTimestamp) / (campaignEnd - campaignStart)
             uint256 maxRemovable = (initialAmounts[i] * (campaignEnd - removalTimestamp)) / (campaignEnd - campaignStart);
             if (i == indexExceedingMax) {
-                removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, removalTimestamp))), maxRemovable, type(uint256).max);
+                (,,, uint256 incentiveAmountRemaining) = incentiveLocker.getIncentiveAmountOfferedAndRemaining(incentiveCampaignId, removalIncentives[i]);
+                removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, removalTimestamp))), maxRemovable, incentiveAmountRemaining);
             } else {
                 removalAmounts[i] = bound(uint256(keccak256(abi.encodePacked(i, removalTimestamp))), 0, maxRemovable);
             }

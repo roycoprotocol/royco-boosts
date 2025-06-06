@@ -74,7 +74,6 @@ contract Test_RemovingIncentives_IncentraAV is IncentraTestBase {
 
         bytes32 incentiveCampaignId = incentiveLocker.createIncentiveCampaign(address(incentraAV), actionParams, incentivesOffered, incentiveAmountsOffered);
 
-        (incentivesOffered, incentiveAmountsOffered) = _generateFakeRandomIncentives(_ip, _numIncentivesOffered);
         vm.expectRevert(IncentraAV.CannotRefundBeforeGracePeriodEnds.selector);
         incentiveLocker.removeIncentives(incentiveCampaignId, incentivesOffered, incentiveAmountsOffered, new bytes(0), address(0));
     }
