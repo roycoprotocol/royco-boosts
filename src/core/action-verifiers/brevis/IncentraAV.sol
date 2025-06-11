@@ -24,10 +24,10 @@ contract IncentraAV is ActionVerifierBase {
     }
 
     /// @notice A mapping from incentive campaign ID to its Incentra campaign parameters.
-    mapping(bytes32 id => ActionParams params) incentiveCampaignIdToCampaignParams;
+    mapping(bytes32 id => ActionParams params) public incentiveCampaignIdToCampaignParams;
 
     /// @notice A mapping from an Incentra campaign to if it has been initialized as a Royco campaign.
-    mapping(address incentraCampaign => bool initialized) incentraCampaignToIsInitialized;
+    mapping(address incentraCampaign => bool initialized) public incentraCampaignToIsInitialized;
 
     /// @notice Error thrown when trying to create a campaign with an campaign address that doesn't allow this AV to process claims.
     error IncentraCampaignAlreadyInitialized();

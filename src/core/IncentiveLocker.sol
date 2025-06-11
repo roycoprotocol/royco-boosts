@@ -147,6 +147,9 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
     /// @notice Thrown when an attempt is made to add zero incentive amounts.
     error CannotOfferZeroIncentives();
 
+    /// @notice Thrown when an attempt is made to remove zero incentive amounts.
+    error CannotRemoveZeroIncentives(address incentive);
+
     /// @notice Thrown when an attempt is made to add more incentives than the maximum.
     error MaxNumIncentivesExceeded();
 
@@ -295,24 +298,17 @@ contract IncentiveLocker is PointsRegistry, Ownable2Step, ReentrancyGuardTransie
             require(uint256(bytes32(bytes20(incentive))) > uint256(bytes32(bytes20(lastIncentive))), CannotProcessDuplicateIncentives());
             lastIncentive = incentive;
 
-            uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
-
             // Update ICS accounting
-            // If removing more than is left, assume they want to remove the rest since this tx might have been frontrun by a claim.
-            if (incentiveAmountRemoved >= ics.incentiveToAmountRemaining[incentive]) {
-                // Get the max amount they can remove
-                incentiveAmountRemoved = ics.incentiveToAmountRemaining[incentive];
-                _incentiveAmountsToRemove[i] = incentiveAmountRemoved;
-                // Account for a max refund
-                delete ics.incentiveToAmountRemaining[incentive];
-            } else {
-                // Account for the refund
-                ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
-            }
+            uint256 incentiveAmountRemoved = _incentiveAmountsToRemove[i];
+            // Check that the incentive amount to remove is non-zero
+            require(incentiveAmountRemoved > 0, CannotRemoveZeroIncentives(incentive));
 
+            // Account for the refund
             ics.incentiveToAmountOffered[incentive] -= incentiveAmountRemoved;
+            ics.incentiveToAmountRemaining[incentive] -= incentiveAmountRemoved;
+
+            // If no incentives were ever spent, update the ICS array to reflect the removal
             if (ics.incentiveToAmountOffered[incentive] == 0) {
-                // Update the ICS array to reflect the removal
                 _removeIncentiveFromCampaign(ics, incentive);
             }
 
