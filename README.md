@@ -1,10 +1,10 @@
-# Royco V2: Incentivize Anything [![Tests](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml)
+# Royco Boosts: Incentivize Anything [![Tests](https://github.com/roycoprotocol/royco-boosts/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-boosts/actions/workflows/test.yml)
 ![Github - R2](https://github.com/user-attachments/assets/e8e2d7db-2cbb-44cf-9fdf-df3c3b699ff7)
 
 ## Overview
-Royco V2 is a more expressive and generalized overhaul of Royco V1 which allows Royco to deliver on its promise to “Incentivize Anything”. It achieves this by adopting a modular structure where new “Action Verifiers” can be connected to support new mechanisms of proving that a user is owed rewards, as well as new marketplace contracts for negotiating those rewards.
+Royco Boosts is a more expressive and generalized overhaul of Royco V1 which allows Royco to deliver on its promise to “Incentivize Anything”. It achieves this by adopting a modular structure where new “Action Verifiers” can be connected to support new mechanisms of proving that a user is owed rewards, as well as new marketplace contracts for negotiating those rewards.
 
-Use V2's flagship Action Verifier, the UMAMerkleChef, to distribute rewards based on offchain oracle queries, or define a new paradigm of reward distribution entirely — with Royco V2, distribute incentives any way you want, exactly the way you want them.
+Use Boosts's flagship Action Verifier, the UMAMerkleChef, to distribute rewards based on offchain oracle queries, or define a new paradigm of reward distribution entirely — with Royco Boosts, distribute incentives any way you want, exactly the way you want them.
 
 ## Technical Architecture
 
@@ -31,7 +31,7 @@ Before paying out rewards from an incentive campaign, the Incentive Locker calls
 Different modules can be connected to each campaign on the IncentiveLocker to achieve different fee structures. Campaigns default to whatever the current default module is set to, but can be updated by a permissioned address in the Incentive Locker.
 
 ### Action Verifiers
-Action Verifiers are modules which define market types on Royco V2. While the IncentiveLocker is very abstract and unopinionated, the Action Verifiers are the opposite, defining the exact behaviors that are expected of a Royco V2 campaign. 
+Action Verifiers are modules which define market types on Royco Boosts. While the IncentiveLocker is very abstract and unopinionated, the Action Verifiers are the opposite, defining the exact behaviors that are expected of a Royco Boosts campaign. 
 
 When rewards are added to or claimed from the Incentive Locker, the IncentiveLocker calls hooks on the ActionVerifiers, which are responsible for determining the exact behavior of how to initialize or how verify reward payouts, in other words: how to verify the completion of an incentivized action.
 
