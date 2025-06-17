@@ -9,36 +9,39 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         setupUmaMerkleChefBaseEnvironment();
     }
 
-    function test_UmaMerkleOracleBaseDeployment(
-        address _owner,
-        address _incentiveLocker,
-        address[] memory _whitelistedAsserters,
-        uint64 _assertionLiveness
-    )
-        public
-    {
+    function test_UmaMerkleOracleBaseDeployment(address _owner, address _incentiveLocker, uint64 _assertionLiveness) public {
         vm.assume(_owner != address(0));
+        uint256 numAsserters = bound(_assertionLiveness, 1, 20);
+        address[] memory whitelistedAsserters = new address[](numAsserters);
+        for (uint256 i = 0; i < numAsserters; ++i) {
+            whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _owner, _incentiveLocker, _assertionLiveness))));
+        }
 
         umaMerkleChefAV =
-            new UmaMerkleChefAV(_owner, UMA_OOV3_ETH_MAINNET, _incentiveLocker, _whitelistedAsserters, USDC_ADDRESS_ETH_MAINNET, _assertionLiveness);
+            new UmaMerkleChefAV(_owner, UMA_OOV3_ETH_MAINNET, _incentiveLocker, whitelistedAsserters, USDC_ADDRESS_ETH_MAINNET, _assertionLiveness);
 
         assertEq(umaMerkleChefAV.owner(), _owner);
         assertEq(address(umaMerkleChefAV.oo()), UMA_OOV3_ETH_MAINNET);
         assertEq(address(umaMerkleChefAV.incentiveLocker()), _incentiveLocker);
-        for (uint256 i = 0; i < _whitelistedAsserters.length; ++i) {
-            assertTrue(umaMerkleChefAV.asserterToIsWhitelisted(_whitelistedAsserters[i]));
+        for (uint256 i = 0; i < whitelistedAsserters.length; ++i) {
+            assertTrue(umaMerkleChefAV.asserterToIsWhitelisted(whitelistedAsserters[i]));
         }
         assertEq(umaMerkleChefAV.bondCurrency(), USDC_ADDRESS_ETH_MAINNET);
         assertEq(umaMerkleChefAV.assertionLiveness(), _assertionLiveness);
     }
 
-    function test_SuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip, address[] memory _whitelistedAsserters) public {
-        vm.assume(_whitelistedAsserters.length > 0 && _ip != address(0));
+    function test_SuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip) public {
+        vm.assume(_ip != address(0));
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        address[] memory whitelistedAsserters = new address[](numAsserters);
+        for (uint256 i = 0; i < numAsserters; ++i) {
+            whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
+        }
 
         vm.prank(OWNER_ADDRESS);
-        umaMerkleChefAV.whitelistAsserters(_whitelistedAsserters);
+        umaMerkleChefAV.whitelistAsserters(whitelistedAsserters);
 
-        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
+        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, whitelistedAsserters))) % whitelistedAsserters.length;
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
@@ -48,7 +51,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
-        address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];
+        address asserter = asserterIndex == 0 || whitelistedAsserters[asserterIndex] == address(0) ? _ip : whitelistedAsserters[asserterIndex];
         vm.startPrank(asserter);
         deal(USDC_ADDRESS_ETH_MAINNET, asserter, 100_000e6);
         ERC20(USDC_ADDRESS_ETH_MAINNET).approve(address(umaMerkleChefAV), type(uint256).max);
@@ -74,13 +77,18 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         assertTrue(resolved);
     }
 
-    function test_UnsuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip, address[] memory _whitelistedAsserters) public {
-        vm.assume(_whitelistedAsserters.length > 0 && _ip != address(0));
+    function test_UnsuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip) public {
+        vm.assume(_ip != address(0));
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        address[] memory whitelistedAsserters = new address[](numAsserters);
+        for (uint256 i = 0; i < numAsserters; ++i) {
+            whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
+        }
 
         vm.prank(OWNER_ADDRESS);
-        umaMerkleChefAV.whitelistAsserters(_whitelistedAsserters);
+        umaMerkleChefAV.whitelistAsserters(whitelistedAsserters);
 
-        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
+        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, whitelistedAsserters))) % whitelistedAsserters.length;
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
@@ -90,7 +98,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
-        address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];
+        address asserter = asserterIndex == 0 || whitelistedAsserters[asserterIndex] == address(0) ? _ip : whitelistedAsserters[asserterIndex];
         vm.startPrank(asserter);
         deal(USDC_ADDRESS_ETH_MAINNET, asserter, 100_000e6);
         ERC20(USDC_ADDRESS_ETH_MAINNET).approve(address(umaMerkleChefAV), type(uint256).max);
@@ -117,13 +125,18 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
         assertFalse(resolved);
     }
 
-    function test_DisputeMerkleRootAssertion_UMC(bytes32 _merkleRoot, address _ip, address[] memory _whitelistedAsserters) public {
-        vm.assume(_whitelistedAsserters.length > 0 && _ip != address(0));
+    function test_DisputeMerkleRootAssertion_UMC(bytes32 _merkleRoot, address _ip) public {
+        vm.assume(_ip != address(0));
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        address[] memory whitelistedAsserters = new address[](numAsserters);
+        for (uint256 i = 0; i < numAsserters; ++i) {
+            whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
+        }
 
         vm.prank(OWNER_ADDRESS);
-        umaMerkleChefAV.whitelistAsserters(_whitelistedAsserters);
+        umaMerkleChefAV.whitelistAsserters(whitelistedAsserters);
 
-        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, _whitelistedAsserters))) % _whitelistedAsserters.length;
+        uint256 asserterIndex = uint256(keccak256(abi.encode(_merkleRoot, _ip, whitelistedAsserters))) % whitelistedAsserters.length;
 
         vm.startPrank(_ip);
         (address[] memory incentivesOffered, uint256[] memory incentiveAmountsOffered) = _generateRealRandomIncentives(_ip, 10);
@@ -133,7 +146,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
             incentiveLocker.createIncentiveCampaign(address(umaMerkleChefAV), actionParams, incentivesOffered, incentiveAmountsOffered);
         vm.stopPrank();
 
-        address asserter = asserterIndex == 0 || _whitelistedAsserters[asserterIndex] == address(0) ? _ip : _whitelistedAsserters[asserterIndex];
+        address asserter = asserterIndex == 0 || whitelistedAsserters[asserterIndex] == address(0) ? _ip : whitelistedAsserters[asserterIndex];
         vm.startPrank(asserter);
         deal(USDC_ADDRESS_ETH_MAINNET, asserter, 100_000e6);
         ERC20(USDC_ADDRESS_ETH_MAINNET).approve(address(umaMerkleChefAV), type(uint256).max);
