@@ -1,5 +1,5 @@
 # Royco V2: Incentivize Anything [![Tests](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml/badge.svg)](https://github.com/roycoprotocol/royco-v2/actions/workflows/test.yml)
-![Royco Banner](./roycobanner.png)
+![Github - R2](https://github.com/user-attachments/assets/e8e2d7db-2cbb-44cf-9fdf-df3c3b699ff7)
 
 ## Overview
 Royco V2 is a more expressive and generalized overhaul of Royco V1 which allows Royco to deliver on its promise to “Incentivize Anything”. It achieves this by adopting a modular structure where new “Action Verifiers” can be connected to support new mechanisms of proving that a user is owed rewards, as well as new marketplace contracts for negotiating those rewards.
