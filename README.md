@@ -11,8 +11,8 @@ Use Boosts's flagship Action Verifier, the UMAMerkleChef, to distribute rewards 
 ### Incentive Locker
 The IncentiveLocker holds the incentives paid out by the IP and connects to various ActionVerifiers to set up campaigns and validate claim requests before paying out incentives.
 
-Creating an Incentive Campaign
-Creating an Incentive Campaign is done by first choosing an ActionVerifier, the smart contract module that you want to determine user reward payouts, and an actionParams value, which is arbitrary data which is used as initialization params for the ActionVerifier. ActionParams can take any format and are defined by the ActionVerifier. Next call the createIncentiveCampaign function, with the incentive token or points addresses, and the amounts of each reward to be distributed over the campaign.
+#### Creating an Incentive Campaign
+An Incentive Campaign is creating by first choosing an ActionVerifier, the smart contract module that you want to determine user reward payouts, and an actionParams value, which is arbitrary data which is used as initialization params for the ActionVerifier. ActionParams can take any format and are defined by the ActionVerifier. Next call the `createIncentiveCampaign(...)` function, with the incentive token or points addresses, and the amounts of each reward to be distributed over the campaign.
 
 #### Managing Co-IPs
 The IP who creates an Incentive Campaign can opt to whitelist other addresses to add incentives to the campaign. 
@@ -31,7 +31,7 @@ Before paying out rewards from an incentive campaign, the Incentive Locker calls
 Different modules can be connected to each campaign on the IncentiveLocker to achieve different fee structures. Campaigns default to whatever the current default module is set to, but can be updated by a permissioned address in the Incentive Locker.
 
 ### Action Verifiers
-Action Verifiers are modules which define market types on Royco Boosts. While the IncentiveLocker is very abstract and unopinionated, the Action Verifiers are the opposite, defining the exact behaviors that are expected of a Royco Boosts campaign. 
+Action Verifiers are modules which define campaign types on Royco Boosts. While the IncentiveLocker is very abstract and unopinionated, the Action Verifiers are the opposite, defining the exact behaviors that are expected of a Royco Boosts campaign. 
 
 When rewards are added to or claimed from the Incentive Locker, the IncentiveLocker calls hooks on the ActionVerifiers, which are responsible for determining the exact behavior of how to initialize or how verify reward payouts, in other words: how to verify the completion of an incentivized action.
 
