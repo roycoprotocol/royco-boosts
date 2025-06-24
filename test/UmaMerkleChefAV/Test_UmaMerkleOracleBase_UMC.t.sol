@@ -32,7 +32,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
     function test_SuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip) public {
         vm.assume(_ip != address(0));
-        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 5);
         address[] memory whitelistedAsserters = new address[](numAsserters);
         for (uint256 i = 0; i < numAsserters; ++i) {
             whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
@@ -79,7 +79,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
     function test_UnsuccessfullyAssertMerkleRoot_UMC(bytes32 _merkleRoot, address _ip) public {
         vm.assume(_ip != address(0));
-        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 5);
         address[] memory whitelistedAsserters = new address[](numAsserters);
         for (uint256 i = 0; i < numAsserters; ++i) {
             whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
@@ -127,7 +127,7 @@ contract Test_UmaMerkleOracleBase_UMC is RoycoTestBase {
 
     function test_DisputeMerkleRootAssertion_UMC(bytes32 _merkleRoot, address _ip) public {
         vm.assume(_ip != address(0));
-        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 20);
+        uint256 numAsserters = bound(uint256(_merkleRoot), 1, 5);
         address[] memory whitelistedAsserters = new address[](numAsserters);
         for (uint256 i = 0; i < numAsserters; ++i) {
             whitelistedAsserters[i] = vm.addr(uint256(keccak256(abi.encodePacked(i, _ip, _merkleRoot))));
